@@ -132,6 +132,15 @@ create table if not exists relatorios_familia (
     conteudo text not null,
     criado_em text not null default (datetime('now'))
 );
+
+create table if not exists bussola_respostas (
+    id text primary key,
+    aluno_id text not null references alunos(id),
+    pontuacoes text not null,
+    perfil_top text not null,
+    resumo_ia text,
+    criado_em text not null default (datetime('now'))
+);
 """
 
 
