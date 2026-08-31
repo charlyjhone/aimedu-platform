@@ -47,4 +47,23 @@
   {% endif %}
 </div>
 
+<div class="card">
+  <h2>Histórico de redações</h2>
+  <p style="color:#666; font-size:0.85rem;">Estes dados vêm direto do módulo de Redação — mesmo banco, sem integração à parte.</p>
+  {% if redacoes %}
+  <table>
+    <tr><th>Data</th><th>Tema</th><th>Nota estimada</th></tr>
+    {% for r in redacoes %}
+    <tr>
+      <td>{{ r['criado_em']|data }}</td>
+      <td>{{ r['tema'] or '—' }}</td>
+      <td>{{ (r['nota_c1'] or 0) + (r['nota_c2'] or 0) + (r['nota_c3'] or 0) + (r['nota_c4'] or 0) + (r['nota_c5'] or 0) }}/1000</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>Nenhuma redação enviada ainda.</p>
+  {% endif %}
+</div>
+
 {% endblock %}
