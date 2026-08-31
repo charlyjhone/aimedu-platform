@@ -1,7 +1,9 @@
 """
 Popula o banco local (SQLite) com dados de demonstração:
   - 1 escola ("Escola A"), 1 série (3º ano EM), 1 turma
-  - 3 usuários: aluno, coordenador, professor (senha "123456" para todos)
+  - usuários de demonstração para todos os papéis — aluno, coordenador,
+    professor, família, direção (admin) e psicopedagoga (senha "123456"
+    para todos)
   - banco de itens de Matemática: 5 eixos x 5 dificuldades = 25 questões
 
 Rodar: python3 seed_data.py  (idempotente — pode rodar de novo sem duplicar)
@@ -214,6 +216,43 @@ def run():
                 print("Aluno ou coordenação de demonstração não encontrados — pulando cadastro de inclusão.")
         else:
             print("Cadastro de inclusão já existe — pulando.")
+
+        # Bloco independente: cria a conta de direção (o "admin" do sistema —
+        # não é um papel novo, é o papel 'direcao' que já existia no schema,
+        # só que nunca tinha sido semeado). Sem isso não existe nenhuma conta
+        # com acesso total (inclusive exclusão definitiva de usuário) para
+        # logar e testar/usar.
+        if db.execute("select count(*) c from usuarios where papel = 'direcao'").fetchone()["c"] == 0:
+            escola = db.execute("select id from escolas limit 1").fetchone()
+            if escola:
+                db.execute(
+                    "insert into usuarios (id, escola_id, nome, email, senha_hash, papel) values (?,?,?,?,?,?)",
+                    (new_id(), escola["id"], "Direção Escola A", "direcao@escolaa.com.br", hash_senha("123456"), "direcao"),
+                )
+                print("Usuário de direção (admin) criado.")
+                print("  direcao@escolaa.com.br / 123456")
+            else:
+                print("Escola de demonstração não encontrada — pulando criação da direção.")
+        else:
+            print("Usuário de direção já existe — pulando.")
+
+        # Bloco independente: cria a conta de psicopedagoga — o papel
+        # responsável por editar o cadastro de inclusão e o PEI dos alunos
+        # (professor só consulta essas informações na ficha do aluno).
+        if db.execute("select count(*) c from usuarios where papel = 'psicopedagoga'").fetchone()["c"] == 0:
+            escola = db.execute("select id from escolas limit 1").fetchone()
+            if escola:
+                db.execute(
+                    "insert into usuarios (id, escola_id, nome, email, senha_hash, papel) values (?,?,?,?,?,?)",
+                    (new_id(), escola["id"], "Psicopedagoga Escola A", "psicopedagoga@escolaa.com.br",
+                     hash_senha("123456"), "psicopedagoga"),
+                )
+                print("Usuário de psicopedagoga criado.")
+                print("  psicopedagoga@escolaa.com.br / 123456")
+            else:
+                print("Escola de demonstração não encontrada — pulando criação da psicopedagoga.")
+        else:
+            print("Usuário de psicopedagoga já existe — pulando.")
 
         if db.execute("select count(*) c from itens_banco").fetchone()["c"] == 0:
             import json
