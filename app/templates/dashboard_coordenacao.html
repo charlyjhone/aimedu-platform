@@ -7,21 +7,17 @@
 </div>
 
 <div class="card">
-  <h2>Radar da Coordenação — alertas ativos</h2>
-  {% if alertas %}
-  <table>
-    <tr><th>Turma</th><th>Aluno</th><th>Nível</th><th>Motivo</th></tr>
-    {% for a in alertas %}
-    <tr>
-      <td>{{ a['turma_nome'] }}</td>
-      <td>{{ a['aluno_nome'] or '—' }}</td>
-      <td class="nivel-{{ a['nivel'] }}">{{ a['nivel']|capitalize }}</td>
-      <td>{{ a['motivo'] }}</td>
-    </tr>
-    {% endfor %}
-  </table>
+  <h2>Radar da Coordenação</h2>
+  {% if contagem.alto or contagem.medio or contagem.baixo %}
+    <p>
+      <span class="tag nivel-alto">{{ contagem.alto }} alerta(s) de nível alto</span>
+      &nbsp;<span class="tag nivel-medio">{{ contagem.medio }} médio</span>
+      &nbsp;<span class="tag nivel-baixo">{{ contagem.baixo }} baixo</span>
+      &nbsp;— pendentes de análise.
+    </p>
   {% else %}
-  <p>Nenhum alerta ativo no momento.</p>
+    <p>Nenhum alerta pendente no momento.</p>
   {% endif %}
+  <a class="botao" href="{{ url_for('radar_coordenacao.index') }}">Abrir Radar completo</a>
 </div>
 {% endblock %}
