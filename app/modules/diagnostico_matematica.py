@@ -15,6 +15,7 @@ Isso é o que permite religar este módulo com "IA de verdade" no futuro sem
 reescrever a lógica adaptativa.
 """
 import json
+from datetime import datetime, timezone
 from flask import Blueprint, render_template, redirect, url_for, session, flash
 
 from ..db import get_db, new_id
@@ -108,7 +109,10 @@ def questao():
     session["item_atual"] = item["id"]
     session.modified = True
 
-    alternativas = json.loads(item["alternativas"])
+    # SQLite guarda "alternativas" como texto (precisa de json.loads); o driver
+    # do Postgres já decodifica a coluna jsonb direto para lista/dict.
+    raw_alternativas = item["alternativas"]
+    alternativas = json.loads(raw_alternativas) if isinstance(raw_alternativas, str) else raw_alternativas
     return render_template(
         "diagnostico_questao.html",
         item=item,
@@ -138,7 +142,7 @@ def responder():
         "insert into diagnostico_respostas "
         "(id, diagnostico_id, item_id, ordem, dificuldade_apresentada, resposta_dada, correta) "
         "values (?,?,?,?,?,?,?)",
-        (new_id(), diag["id"], item_id, diag["num"] + 1, diag["dificuldade"], resposta, int(correta)),
+        (new_id(), diag["id"], item_id, diag["num"] + 1, diag["dificuldade"], resposta, correta),
     )
     db.commit()
 
@@ -183,9 +187,12 @@ def resultado():
 
     resumo = resumo_diagnostico("matemática", diag["acertos"], TOTAL_QUESTOES, nivel_final, por_eixo_taxa)
 
+    # Timestamp calculado em Python (não com datetime('now')/now() do banco) para
+    # funcionar igual em SQLite e Postgres, sem depender da função específica de cada um.
+    agora = datetime.now(timezone.utc).isoformat()
     db.execute(
-        "update diagnosticos set finalizado_em = datetime('now'), nivel_final = ?, resumo_ia = ? where id = ?",
-        (nivel_final, resumo, diag["id"]),
+        "update diagnosticos set finalizado_em = ?, nivel_final = ?, resumo_ia = ? where id = ?",
+        (agora, nivel_final, resumo, diag["id"]),
     )
     db.commit()
 
