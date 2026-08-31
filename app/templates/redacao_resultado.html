@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block titulo %}Resultado da redação — AIM.Edu{% endblock %}
+{% block conteudo %}
+<div class="card">
+  <h2>{{ r['tema'] or 'Redação sem tema informado' }}</h2>
+  <p style="font-size:1.4rem; font-weight:bold; color:var(--azul);">{{ nota_total }}/1000</p>
+  <p style="color:#666; font-size:0.85rem;">Nota estimada automaticamente por regras — não substitui a correção de um professor.</p>
+</div>
+
+<div class="card">
+  <h2>Competências</h2>
+  {% for label, valor in [
+    ('C1 — Domínio da norma culta', r['nota_c1']),
+    ('C2 — Compreensão do tema', r['nota_c2']),
+    ('C3 — Organização e argumentação', r['nota_c3']),
+    ('C4 — Coesão e coerência', r['nota_c4']),
+    ('C5 — Proposta de intervenção', r['nota_c5']),
+  ] %}
+  <div style="margin-bottom:12px;">
+    <div style="display:flex; justify-content:space-between; font-size:0.9rem; margin-bottom:4px;">
+      <span>{{ label }}</span>
+      <span>{{ valor or 0 }}/200</span>
+    </div>
+    <div class="barra"><div style="width: {{ ((valor or 0) / 200 * 100)|round(0, 'floor')|int }}%;"></div></div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h2>Feedback</h2>
+  <p>{{ r['feedback_ia'] }}</p>
+</div>
+
+<div class="card">
+  <h2>Texto enviado</h2>
+  <p style="white-space: pre-wrap;">{{ r['texto'] }}</p>
+</div>
+
+<a href="{{ url_for('redacao.index') }}">&larr; Voltar</a>
+{% endblock %}
