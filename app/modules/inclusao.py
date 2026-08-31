@@ -8,11 +8,13 @@ e o apoio especializado envolvido (ex.: AEE, acompanhante terapêutico).
 Quem dá aula para o aluno pode consultar antes de planejar uma aula ou uma
 prova; só coordenação/direção podem criar ou editar o cadastro.
 
-Fase futura (não implementada ainda): Plano Educacional Individualizado
-(PEI) completo, com metas pedagógicas específicas e revisões periódicas —
-este módulo já nasce com o nome/URL pensados para crescer nessa direção
-sem quebrar o que existe hoje (o cadastro atual vira a base do PEI, não é
-substituído por ele).
+Fase 2 (adicionada depois, também neste arquivo): o PEI (Plano Educacional
+Individualizado) completo — metas pedagógicas específicas por aluno, cada
+uma com status (não iniciada / em andamento / atingida), e um histórico de
+revisões periódicas em texto livre. O PEI exige que o aluno já tenha um
+cadastro de Inclusão (fase 1) — ele não existe sozinho, é uma continuação
+do mesmo cadastro. Mesma regra de acesso da fase 1: só coordenação/direção
+criam metas e registram revisões; o professor só consulta.
 
 Dado sensível — regra de acesso diferente dos outros módulos: aqui o
 assunto é laudo/necessidade específica do aluno. Por isso a leitura é mais
@@ -40,6 +42,12 @@ CATEGORIAS = [
     "Dislexia / Transtorno de Aprendizagem",
     "Outro",
 ]
+
+STATUS_META_LABEL = {
+    "nao_iniciada": "Não iniciada",
+    "em_andamento": "Em andamento",
+    "atingida": "Atingida",
+}
 
 
 def _escola_id_atual():
@@ -174,3 +182,103 @@ def salvar(aluno_id):
 
     db.commit()
     return redirect(url_for("inclusao.ficha", aluno_id=aluno_id))
+
+
+@bp.route("/aluno/<aluno_id>/pei")
+@login_obrigatorio(papeis=["professor", "coordenador", "direcao"])
+def pei(aluno_id):
+    db = get_db()
+    aluno = _aluno_visivel(db, aluno_id)
+    if not aluno:
+        flash("Aluno não encontrado ou fora do seu acesso.", "erro")
+        return redirect(url_for("inclusao.index"))
+
+    cadastro = db.execute("select id from inclusao_cadastro where aluno_id = ?", (aluno_id,)).fetchone()
+    if not cadastro:
+        flash("Crie primeiro o cadastro de inclusão deste aluno para depois montar o PEI.", "erro")
+        return redirect(url_for("inclusao.ficha", aluno_id=aluno_id))
+
+    metas = db.execute("select * from pei_metas where aluno_id = ? order by criado_em", (aluno_id,)).fetchall()
+    revisoes = db.execute(
+        "select * from pei_revisoes where aluno_id = ? order by criado_em desc", (aluno_id,)
+    ).fetchall()
+    pode_editar = usuario_logado()["papel"] in ("coordenador", "direcao")
+    return render_template(
+        "inclusao_pei.html", aluno=aluno, metas=metas, revisoes=revisoes,
+        status_label=STATUS_META_LABEL, pode_editar=pode_editar,
+    )
+
+
+@bp.route("/aluno/<aluno_id>/pei/metas/nova", methods=["POST"])
+@login_obrigatorio(papeis=["coordenador", "direcao"])
+def criar_meta(aluno_id):
+    db = get_db()
+    aluno = _aluno_visivel(db, aluno_id)
+    if not aluno:
+        flash("Aluno não encontrado ou fora do seu acesso.", "erro")
+        return redirect(url_for("inclusao.index"))
+
+    descricao = request.form.get("descricao", "").strip()
+    area = request.form.get("area", "").strip()
+    if not descricao:
+        flash("Descreva a meta.", "erro")
+        return redirect(url_for("inclusao.pei", aluno_id=aluno_id))
+
+    db.execute(
+        "insert into pei_metas (id, aluno_id, descricao, area, criado_por_usuario_id) values (?,?,?,?,?)",
+        (new_id(), aluno_id, descricao, area or None, usuario_logado()["id"]),
+    )
+    db.commit()
+    flash("Meta adicionada ao PEI.", "ok")
+    return redirect(url_for("inclusao.pei", aluno_id=aluno_id))
+
+
+@bp.route("/aluno/<aluno_id>/pei/metas/<meta_id>/status", methods=["POST"])
+@login_obrigatorio(papeis=["coordenador", "direcao"])
+def atualizar_status_meta(aluno_id, meta_id):
+    db = get_db()
+    aluno = _aluno_visivel(db, aluno_id)
+    if not aluno:
+        flash("Aluno não encontrado ou fora do seu acesso.", "erro")
+        return redirect(url_for("inclusao.index"))
+
+    novo_status = request.form.get("status")
+    if novo_status not in STATUS_META_LABEL:
+        flash("Status inválido.", "erro")
+        return redirect(url_for("inclusao.pei", aluno_id=aluno_id))
+
+    meta = db.execute("select id from pei_metas where id = ? and aluno_id = ?", (meta_id, aluno_id)).fetchone()
+    if not meta:
+        flash("Meta não encontrada.", "erro")
+        return redirect(url_for("inclusao.pei", aluno_id=aluno_id))
+
+    db.execute(
+        "update pei_metas set status = ?, atualizado_em = ? where id = ?",
+        (novo_status, datetime.now(timezone.utc).isoformat(), meta_id),
+    )
+    db.commit()
+    flash("Status da meta atualizado.", "ok")
+    return redirect(url_for("inclusao.pei", aluno_id=aluno_id))
+
+
+@bp.route("/aluno/<aluno_id>/pei/revisoes/nova", methods=["POST"])
+@login_obrigatorio(papeis=["coordenador", "direcao"])
+def criar_revisao(aluno_id):
+    db = get_db()
+    aluno = _aluno_visivel(db, aluno_id)
+    if not aluno:
+        flash("Aluno não encontrado ou fora do seu acesso.", "erro")
+        return redirect(url_for("inclusao.index"))
+
+    texto = request.form.get("texto", "").strip()
+    if not texto:
+        flash("Escreva o texto da revisão.", "erro")
+        return redirect(url_for("inclusao.pei", aluno_id=aluno_id))
+
+    db.execute(
+        "insert into pei_revisoes (id, aluno_id, texto, criado_por_usuario_id) values (?,?,?,?)",
+        (new_id(), aluno_id, texto, usuario_logado()["id"]),
+    )
+    db.commit()
+    flash("Revisão registrada.", "ok")
+    return redirect(url_for("inclusao.pei", aluno_id=aluno_id))
