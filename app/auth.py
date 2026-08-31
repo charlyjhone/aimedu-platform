@@ -44,6 +44,9 @@ def login():
         db = get_db()
         row = db.execute("select * from usuarios where email = ?", (email,)).fetchone()
         if row and row["senha_hash"] == hash_senha(senha):
+            if not row["ativo"]:
+                flash("Esta conta está desativada. Procure a coordenação da escola.", "erro")
+                return render_template("login.html")
             session["usuario"] = {"id": row["id"], "nome": row["nome"], "papel": row["papel"], "escola_id": row["escola_id"]}
             return redirect(url_for("auth.painel"))
         flash("E-mail ou senha inválidos.", "erro")
