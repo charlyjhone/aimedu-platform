@@ -11,6 +11,7 @@
     {% if session.get('usuario') %}
       <div>
         <span style="margin-right:16px;">{{ session['usuario']['nome'] }} · {{ session['usuario']['papel']|capitalize }}</span>
+        <a href="{{ url_for('gestao_usuarios.perfil') }}" style="margin-right:16px;">Meu perfil</a>
         <a href="{{ url_for('auth.logout') }}">Sair</a>
       </div>
     {% endif %}
