@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block titulo %}Bússola Vocacional — AIM.Edu{% endblock %}
+{% block conteudo %}
+<div class="card">
+  <h2>Bússola Vocacional</h2>
+  <p>Para cada frase, marque o quanto ela combina com você: de 1 (discordo totalmente) a 5 (concordo totalmente). Não existe resposta certa ou errada.</p>
+</div>
+
+<form method="post" action="{{ url_for('bussola_vocacional.responder') }}">
+  {% for area, afirmacoes in questionario %}
+  <div class="card">
+    <h2>{{ area }}</h2>
+    {% for afirmacao in afirmacoes %}
+    <div style="margin-bottom:16px;">
+      <p style="margin-bottom:6px;">{{ afirmacao }}</p>
+      <div style="display:flex; gap:18px; align-items:center; font-size:0.85rem;">
+        <span>Discordo</span>
+        {% for valor in range(1, 6) %}
+        <label style="display:flex; flex-direction:column; align-items:center; gap:4px; margin:0;">
+          <input type="radio" name="{{ area }}|{{ loop.index0 }}" value="{{ valor }}" {% if valor == 3 %}checked{% endif %} required>
+          {{ valor }}
+        </label>
+        {% endfor %}
+        <span>Concordo</span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+
+  <button class="botao" type="submit">Ver meu resultado</button>
+</form>
+{% endblock %}
