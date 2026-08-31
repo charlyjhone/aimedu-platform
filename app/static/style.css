@@ -64,6 +64,8 @@ main { max-width: 900px; margin: 0 auto; padding: 28px 20px; }
 .barra > div { height: 100%; background: var(--azul); }
 .flash { padding: 10px 16px; border-radius: 6px; margin-bottom: 14px; }
 .flash.erro { background: #fdecea; color: var(--vermelho); }
+.flash.ok { background: #eaf6ec; color: var(--verde); }
+.flash.credenciais { background: #fff8e1; color: #7a5b00; border: 1px solid #f0d98c; font-weight: bold; }
 label { display: block; margin: 10px 0 4px; font-size: 0.9rem; }
 input[type=email], input[type=password] {
   width: 100%; padding: 10px; border: 1px solid var(--borda); border-radius: 6px; font-size: 0.95rem;
