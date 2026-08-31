@@ -1,19 +1,24 @@
 """
 Camada de banco de dados do AIM.Edu.
 
-Hoje: SQLite local (roda sem internet, dentro deste sandbox).
-Amanhã: Postgres/Supabase, usando schema_postgres.sql (mesma modelagem).
+Se a variável de ambiente DATABASE_URL estiver definida, conecta no Postgres
+real (Supabase) — o schema já está aplicado lá via migration, então esta
+camada não precisa recriá-lo. Sem essa variável, usa SQLite local (modo de
+demonstração, sem depender de internet).
 
-Todas as consultas usam SQL parametrizado simples de propósito — trocar o
-driver de sqlite3 para psycopg (Postgres) exige mudar só este arquivo, não
-os módulos que chamam get_db().
+Todas as consultas em auth.py, app/modules/*.py e seed_data.py usam SQL
+parametrizado com "?" de propósito — a classe _PGConnection abaixo traduz
+isso para "%s" na hora de falar com o Postgres, então nenhum desses arquivos
+precisa saber qual banco está por trás.
 """
+import os
 import sqlite3
 import uuid
 from pathlib import Path
-from flask import g, current_app
+from flask import g
 
 DB_PATH = Path(__file__).resolve().parent.parent / "aimedu.db"
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 SCHEMA_SQLITE = """
 create table if not exists escolas (
@@ -134,11 +139,54 @@ def new_id() -> str:
     return uuid.uuid4().hex
 
 
-def get_db() -> sqlite3.Connection:
+if DATABASE_URL:
+    import psycopg2
+    import psycopg2.extras
+
+    class _PGCursor:
+        """Faz um cursor do psycopg2 responder a .fetchone()/.fetchall() como
+        o cursor do sqlite3 — os módulos que chamam db.execute(...) não
+        precisam saber a diferença."""
+
+        def __init__(self, cur):
+            self._cur = cur
+
+        def fetchone(self):
+            return self._cur.fetchone()
+
+        def fetchall(self):
+            return self._cur.fetchall()
+
+    class _PGConnection:
+        def __init__(self, conn):
+            self._conn = conn
+
+        def execute(self, query, params=()):
+            cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute(query.replace("?", "%s"), params)
+            return _PGCursor(cur)
+
+        def commit(self):
+            self._conn.commit()
+
+        def close(self):
+            self._conn.close()
+
+    def _connect():
+        raw = psycopg2.connect(DATABASE_URL, sslmode="require")
+        return _PGConnection(raw)
+
+else:
+    def _connect():
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        return conn
+
+
+def get_db():
     if "db" not in g:
-        g.db = sqlite3.connect(DB_PATH)
-        g.db.row_factory = sqlite3.Row
-        g.db.execute("PRAGMA foreign_keys = ON")
+        g.db = _connect()
     return g.db
 
 
@@ -150,6 +198,9 @@ def close_db(_e=None):
 
 def init_db(app):
     app.teardown_appcontext(close_db)
+    if DATABASE_URL:
+        # Schema já existe no Supabase (aplicado via migration) — nada a criar.
+        return
     with app.app_context():
         conn = get_db()
         conn.executescript(SCHEMA_SQLITE)
