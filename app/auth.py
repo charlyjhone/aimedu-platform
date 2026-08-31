@@ -75,4 +75,6 @@ def painel():
         return render_template("dashboard_coordenacao.html", u=u, total_diag=total_diag, contagem=contagem)
     if u["papel"] == "professor":
         return render_template("dashboard_professor.html", u=u)
+    if u["papel"] == "familia":
+        return redirect(url_for("relatorios_familia.index"))
     return render_template("dashboard_aluno.html", u=u, aluno=None, diagnosticos=[])
