@@ -59,3 +59,54 @@ def resumo_diagnostico(disciplina: str, acertos: int, total: int, nivel_final: f
         f"atual em {nivel_final:.1f} de 5. Isso indica {tom}. Os eixos que mais precisam de atenção "
         f"agora são: {piores_txt}. Recomendação: priorizar exercícios nesses eixos nas próximas duas semanas."
     )
+
+
+def perfil_vocacional(pontuacoes: dict, nivel_matematica: float | None = None) -> str:
+    """Gera o texto de orientação da Bússola Vocacional a partir da pontuação
+    (0 a 10) de cada área de interesse. Quando existe um diagnóstico de
+    Matemática já feito pelo aluno, cruza os dois — é aqui que a Bússola
+    "conversa" com o Diagnóstico Adaptativo pelo mesmo banco de dados."""
+    if PROVEDOR_ATIVO == "llm":
+        prompt = (
+            f"Aluno respondeu um questionário de interesses vocacionais com estas pontuações "
+            f"(0 a 10 por área): {pontuacoes}. Nível estimado em Matemática (0 a 5, se houver): "
+            f"{nivel_matematica}. Escreva uma orientação vocacional curta, construtiva, em "
+            "português, para um estudante do ensino médio, sem soar definitiva."
+        )
+        return _gerar_llm(prompt)
+
+    ordenado = sorted(pontuacoes.items(), key=lambda kv: kv[1], reverse=True)
+    topo_valor = ordenado[0][1]
+    top_areas = [area for area, valor in ordenado if valor >= topo_valor - 1 and valor > 0]
+    if len(top_areas) == 1:
+        top_txt = top_areas[0]
+    else:
+        top_txt = ", ".join(top_areas[:-1]) + " e " + top_areas[-1]
+
+    texto = (
+        f"Com base nas suas respostas, sua maior afinidade hoje aparece em {top_txt}. "
+        "Isso não é uma resposta definitiva sobre sua carreira — é um retrato do que mais "
+        "chamou sua atenção neste momento, útil como ponto de partida."
+    )
+
+    if nivel_matematica is not None:
+        exatas_no_topo = any("Exatas" in area for area in top_areas)
+        if exatas_no_topo and nivel_matematica >= 3.5:
+            texto += (
+                " Isso combina com o seu bom desempenho no Diagnóstico Adaptativo de Matemática, "
+                "o que reforça esse caminho como uma opção sólida."
+            )
+        elif exatas_no_topo and nivel_matematica < 3.5:
+            texto += (
+                " Seu Diagnóstico Adaptativo de Matemática ainda mostra espaço para evoluir — "
+                "vale reforçar a base nessa disciplina para seguir esse caminho com mais segurança."
+            )
+        elif not exatas_no_topo and nivel_matematica >= 4:
+            texto += (
+                " Vale notar: seu Diagnóstico de Matemática mostrou um desempenho forte mesmo essa "
+                "não sendo sua área de maior interesse — pode valer a pena considerar cursos que "
+                "combinem exatas com a sua área principal."
+            )
+
+    texto += " Converse com a coordenação sobre trilhas, cursos e profissões ligadas a essas áreas."
+    return texto
