@@ -174,6 +174,14 @@ create table if not exists pei_revisoes (
     criado_por_usuario_id text not null references usuarios(id),
     criado_em text not null default (datetime('now'))
 );
+
+create table if not exists duvidas_professor (
+    id text primary key,
+    usuario_id text not null references usuarios(id),
+    pergunta text not null,
+    resposta_ia text not null,
+    criado_em text not null default (datetime('now'))
+);
 """
 
 
