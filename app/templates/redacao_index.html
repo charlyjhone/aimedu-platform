@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block titulo %}Redação — AIM.Edu{% endblock %}
+{% block conteudo %}
+<div class="card">
+  <h2>Redação (correção estilo ENEM)</h2>
+  <p>Envie o texto de uma redação dissertativa-argumentativa e receba uma estimativa de nota nas 5 competências do ENEM, com feedback sobre o que ajustar.</p>
+  <a class="botao" href="{{ url_for('redacao.nova') }}">Enviar nova redação</a>
+</div>
+
+{% if redacoes %}
+<div class="card">
+  <h2>Minhas redações anteriores</h2>
+  <table>
+    <tr><th>Data</th><th>Tema</th><th>Nota estimada</th><th></th></tr>
+    {% for r in redacoes %}
+    <tr>
+      <td>{{ r['criado_em']|data }}</td>
+      <td>{{ r['tema'] or '—' }}</td>
+      <td>{{ (r['nota_c1'] or 0) + (r['nota_c2'] or 0) + (r['nota_c3'] or 0) + (r['nota_c4'] or 0) + (r['nota_c5'] or 0) }}/1000</td>
+      <td><a href="{{ url_for('redacao.resultado', redacao_id=r['id']) }}">Ver detalhes</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+{% endblock %}
