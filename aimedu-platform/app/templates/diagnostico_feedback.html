@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block titulo %}Diagnóstico de Matemática — AIM.Edu{% endblock %}
+{% block conteudo %}
+<div class="card">
+  {% if correta %}
+    <p class="certo">✓ Resposta correta!</p>
+  {% else %}
+    <p class="errado">✗ Resposta incorreta. A alternativa certa era "{{ correta_letra }}".</p>
+  {% endif %}
+  {% if explicacao %}<p>{{ explicacao }}</p>{% endif %}
+
+  <a class="botao" href="{{ url_for('diagnostico_matematica.questao') if numero < total else url_for('diagnostico_matematica.resultado') }}">
+    {{ 'Próxima questão' if numero < total else 'Ver resultado final' }}
+  </a>
+</div>
+{% endblock %}
