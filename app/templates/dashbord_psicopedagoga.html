@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block titulo %}Painel da psicopedagogia — AIM.Edu{% endblock %}
+{% block conteudo %}
+<div class="card">
+  <h2>Inclusão e PEI</h2>
+  <p>Cadastre necessidades específicas, adaptações e o Plano Educacional Individualizado (PEI) de qualquer aluno da escola — professores dão aula com essas informações à vista, mas só consultam.</p>
+  <a class="botao" href="{{ url_for('inclusao.index') }}">Abrir cadastro de Inclusão</a>
+</div>
+{% endblock %}
