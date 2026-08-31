@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block titulo %}Importar professores — AIM.Edu{% endblock %}
+{% block conteudo %}
+<div class="card">
+  <h2>Importar professores em lote (CSV)</h2>
+  <p>O arquivo deve ter 4 colunas, na ordem: <strong>nome, email, disciplina, turmas</strong>. Se o professor leciona em mais de uma turma, separe os nomes das turmas por ponto e vírgula (;). Disciplina e turmas podem ficar em branco. A primeira linha pode ser um cabeçalho — se for, é detectada e ignorada automaticamente.</p>
+  <p style="color:#666; font-size:0.85rem;">Exemplo de conteúdo do arquivo:</p>
+  <pre style="background:var(--azul-claro); padding:12px; border-radius:6px; font-size:0.85rem; overflow-x:auto;">nome,email,disciplina,turmas
+Ana Ribeiro,ana.ribeiro@escolaa.com.br,Português,3º EM A;3º EM B
+Bruno Costa,bruno.costa@escolaa.com.br,História,3º EM A</pre>
+
+  <form method="post" enctype="multipart/form-data" style="margin-top:16px;">
+    <label for="arquivo">Arquivo CSV</label>
+    <input type="file" id="arquivo" name="arquivo" accept=".csv" required>
+    <button class="botao" type="submit" style="margin-top:16px;">Importar</button>
+  </form>
+</div>
+
+{% if resultados is not none %}
+<div class="card">
+  <h2>Resultado da importação</h2>
+  {% if resultados %}
+  <table>
+    <tr><th>Linha</th><th>Nome</th><th>Situação</th></tr>
+    {% for r in resultados %}
+    <tr>
+      <td>{{ r['linha'] }}</td>
+      <td>{{ r['nome'] }}</td>
+      <td>
+        {% if r['status'] == 'criado' %}
+        <span style="color:var(--verde);">Criado</span> — {{ r['email'] }} — senha temporária: <strong>{{ r['senha'] }}</strong>
+        {% if r.get('motivo') %}<br><span style="color:#b8860b;">{{ r['motivo'] }}</span>{% endif %}
+        {% else %}
+        <span style="color:var(--vermelho);">Erro</span> — {{ r['motivo'] }}
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p style="color:#666; font-size:0.8rem; margin-top:12px;">Anote as senhas temporárias agora — elas não serão mostradas de novo.</p>
+  {% else %}
+  <p>O arquivo não tinha nenhuma linha de dados para importar.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+<a href="{{ url_for('gestao_usuarios.index') }}">&larr; Voltar</a>
+{% endblock %}
