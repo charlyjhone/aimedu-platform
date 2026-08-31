@@ -167,10 +167,15 @@ def aluno(aluno_id):
         "select * from diagnosticos where aluno_id = ? order by iniciado_em desc",
         (aluno_id,),
     ).fetchall()
+    redacoes = db.execute(
+        "select * from redacoes where aluno_id = ? order by criado_em desc",
+        (aluno_id,),
+    ).fetchall()
 
     return render_template(
         "radar_aluno.html",
         aluno=aluno_row,
         alertas=alertas,
         diagnosticos=diagnosticos,
+        redacoes=redacoes,
     )
