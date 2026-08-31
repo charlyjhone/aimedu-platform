@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block titulo %}{{ aluno['nome'] }} — Relatórios da Família{% endblock %}
+{% block conteudo %}
+<div class="card">
+  <h2>{{ aluno['nome'] }}</h2>
+  <p>Turma: {{ aluno['turma_nome'] }}</p>
+  <p>Gere um relatório atualizado a qualquer momento — ele junta os dados mais recentes de todos os módulos (diagnóstico de matemática, redação, bússola vocacional e radar da coordenação).</p>
+  <form method="post" action="{{ url_for('relatorios_familia.gerar', aluno_id=aluno['id']) }}">
+    <button class="botao" type="submit">Gerar novo relatório</button>
+  </form>
+</div>
+
+{% if relatorios %}
+<div class="card">
+  <h2>Relatórios anteriores</h2>
+  <table>
+    <tr><th>Período</th><th>Gerado em</th><th></th></tr>
+    {% for r in relatorios %}
+    <tr>
+      <td>{{ r['periodo'] }}</td>
+      <td>{{ r['criado_em']|data }}</td>
+      <td><a href="{{ url_for('relatorios_familia.relatorio', relatorio_id=r['id']) }}">Ver relatório</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+{% endblock %}
