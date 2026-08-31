@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block titulo %}Meu resultado — Bússola Vocacional{% endblock %}
+{% block conteudo %}
+<div class="card">
+  <h2>Sua Bússola Vocacional</h2>
+  <p>{{ resposta['resumo_ia'] }}</p>
+</div>
+
+<div class="card">
+  <h2>Pontuação por área</h2>
+  {% for area, valor in pontuacoes.items() %}
+  <div style="margin-bottom:12px;">
+    <div style="display:flex; justify-content:space-between; font-size:0.9rem; margin-bottom:4px;">
+      <span>{{ area }}</span>
+      <span>{{ valor }}/10</span>
+    </div>
+    <div class="barra"><div style="width: {{ (valor / 10 * 100)|round(0, 'floor')|int }}%;"></div></div>
+  </div>
+  {% endfor %}
+</div>
+
+<a href="{{ url_for('bussola_vocacional.index') }}">&larr; Voltar</a>
+{% endblock %}
