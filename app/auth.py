@@ -75,7 +75,7 @@ def painel():
             "join turmas t on t.id = a.turma_id "
             "left join alunos al on al.id = a.aluno_id "
             "left join usuarios us on us.id = al.usuario_id "
-            "where a.resolvido = 0 order by a.criado_em desc"
+            "where a.resolvido = false order by a.criado_em desc"
         ).fetchall()
         return render_template("dashboard_coordenacao.html", u=u, total_diag=total_diag, alertas=alertas)
     if u["papel"] == "professor":
