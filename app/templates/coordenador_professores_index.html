@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block titulo %}Coordenador de Professores por IA — AIM.Edu{% endblock %}
+{% block conteudo %}
+
+<div class="card">
+  <h2>Coordenador de Professores por IA</h2>
+  <p style="color:#666; font-size:0.85rem;">
+    {% if professores is none %}
+    Escolha uma turma para ver o desempenho, os pontos de atenção e as sugestões pedagógicas geradas
+    a partir dos diagnósticos, redações e alertas já registrados.
+    {% else %}
+    Visão da coordenação: escolha uma turma para ver o desempenho dela, ou abra o relatório de adesão
+    dos professores às ferramentas do sistema.
+    {% endif %}
+  </p>
+  <p><a class="botao" href="{{ url_for('coordenador_professores.duvidas') }}">Tirar uma dúvida com a IA</a></p>
+</div>
+
+<div class="card">
+  <h2>Turmas</h2>
+  {% if turmas %}
+  <table>
+    <tr><th>Turma</th><th></th></tr>
+    {% for t in turmas %}
+    <tr>
+      <td>{{ t['nome'] }}</td>
+      <td><a href="{{ url_for('coordenador_professores.turma', turma_id=t['id']) }}">Ver desempenho</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>Nenhuma turma vinculada a você ainda.</p>
+  {% endif %}
+</div>
+
+{% if professores is not none %}
+<div class="card">
+  <h2>Professores</h2>
+  {% if professores %}
+  <table>
+    <tr><th>Nome</th><th>Disciplina</th></tr>
+    {% for p in professores %}
+    <tr>
+      <td>{{ p['nome'] }}</td>
+      <td>{{ p['disciplina'] or '—' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>Nenhum professor cadastrado ainda.</p>
+  {% endif %}
+  <p><a class="botao" href="{{ url_for('coordenador_professores.relatorio_professores') }}">Ver relatório de adesão dos professores</a></p>
+</div>
+{% endif %}
+
+{% endblock %}
