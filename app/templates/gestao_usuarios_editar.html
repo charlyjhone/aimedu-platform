@@ -45,5 +45,15 @@
   </form>
 </div>
 
+{% if pode_excluir %}
+<div class="card">
+  <h2>Excluir conta</h2>
+  <p style="color:#666; font-size:0.85rem;">Exclusão definitiva — só a direção pode fazer isso, e só quando a conta não tem nenhum histórico vinculado (diagnósticos, redações, cadastro de inclusão, PEI etc.). Havendo qualquer histórico, a exclusão é bloqueada; desative a conta nesse caso, em vez de excluir.</p>
+  <form method="post" action="{{ url_for('gestao_usuarios.excluir', usuario_id=alvo['id']) }}" onsubmit="return confirm('Excluir {{ alvo['nome'] }} definitivamente? Essa ação não pode ser desfeita.');">
+    <button class="botao" type="submit" style="background:var(--vermelho);">Excluir definitivamente</button>
+  </form>
+</div>
+{% endif %}
+
 <a href="{{ url_for('gestao_usuarios.index') }}">&larr; Voltar</a>
 {% endblock %}
