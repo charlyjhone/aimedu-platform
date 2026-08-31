@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block titulo %}PEI — {{ aluno['nome'] }}{% endblock %}
+{% block conteudo %}
+<div class="card">
+  <h2>PEI de {{ aluno['nome'] }}</h2>
+  <p>Turma: {{ aluno['turma_nome'] }}</p>
+  <p style="color:#666; font-size:0.85rem;">Plano Educacional Individualizado — metas pedagógicas específicas para este aluno e o histórico de revisões periódicas feitas pela coordenação.</p>
+</div>
+
+<div class="card">
+  <h2>Metas pedagógicas</h2>
+  {% if metas %}
+  <table>
+    <tr><th>Meta</th><th>Área</th><th>Status</th>{% if pode_editar %}<th></th>{% endif %}</tr>
+    {% for m in metas %}
+    <tr>
+      <td>{{ m['descricao'] }}</td>
+      <td>{{ m['area'] or '—' }}</td>
+      <td>{{ status_label.get(m['status'], m['status']) }}</td>
+      {% if pode_editar %}
+      <td>
+        <form method="post" action="{{ url_for('inclusao.atualizar_status_meta', aluno_id=aluno['id'], meta_id=m['id']) }}" style="display:flex; gap:6px; align-items:center;">
+          <select name="status" style="padding:6px; border:1px solid var(--borda); border-radius:6px;">
+            {% for valor, rotulo in status_label.items() %}
+            <option value="{{ valor }}" {% if valor == m['status'] %}selected{% endif %}>{{ rotulo }}</option>
+            {% endfor %}
+          </select>
+          <button class="botao" type="submit">Atualizar</button>
+        </form>
+      </td>
+      {% endif %}
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>Nenhuma meta cadastrada ainda.</p>
+  {% endif %}
+
+  {% if pode_editar %}
+  <form method="post" action="{{ url_for('inclusao.criar_meta', aluno_id=aluno['id']) }}" style="margin-top:16px;">
+    <label for="descricao">Nova meta</label>
+    <textarea name="descricao" id="descricao" rows="2" required placeholder="Ex.: Ler textos curtos com apoio visual e responder perguntas simples sobre o conteúdo." style="width:100%; padding:12px; border:1px solid var(--borda); border-radius:6px; font-size:0.95rem; font-family:inherit;"></textarea>
+    <label for="area" style="margin-top:12px;">Área/disciplina (opcional)</label>
+    <input type="text" id="area" name="area" placeholder="Ex.: Língua Portuguesa">
+    <button class="botao" type="submit" style="margin-top:12px;">Adicionar meta</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Revisões periódicas</h2>
+  {% if revisoes %}
+  {% for r in revisoes %}
+  <div style="border-bottom:1px solid var(--borda); padding:10px 0;">
+    <p style="color:#666; font-size:0.8rem; margin:0 0 4px;">{{ r['criado_em']|data }}</p>
+    <p style="margin:0;">{{ r['texto'] }}</p>
+  </div>
+  {% endfor %}
+  {% else %}
+  <p>Nenhuma revisão registrada ainda.</p>
+  {% endif %}
+
+  {% if pode_editar %}
+  <form method="post" action="{{ url_for('inclusao.criar_revisao', aluno_id=aluno['id']) }}" style="margin-top:16px;">
+    <label for="texto">Nova revisão</label>
+    <textarea name="texto" id="texto" rows="3" required placeholder="Resumo do progresso do aluno desde a última revisão..." style="width:100%; padding:12px; border:1px solid var(--borda); border-radius:6px; font-size:0.95rem; font-family:inherit;"></textarea>
+    <button class="botao" type="submit" style="margin-top:12px;">Registrar revisão</button>
+  </form>
+  {% endif %}
+</div>
+
+<a href="{{ url_for('inclusao.ficha', aluno_id=aluno['id']) }}">&larr; Voltar</a>
+{% endblock %}
