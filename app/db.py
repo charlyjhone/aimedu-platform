@@ -48,7 +48,7 @@ create table if not exists usuarios (
     nome text not null,
     email text not null unique,
     senha_hash text not null,
-    papel text not null check (papel in ('aluno','professor','coordenador','direcao','familia')),
+    papel text not null check (papel in ('aluno','professor','coordenador','direcao','familia','psicopedagoga')),
     ativo integer not null default 1,
     criado_em text not null default (datetime('now'))
 );
