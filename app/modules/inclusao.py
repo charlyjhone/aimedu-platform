@@ -6,22 +6,27 @@ Fase 1 (esta versão): um cadastro central por aluno com a categoria da
 necessidade, se há laudo formal, quais adaptações usar em sala/avaliações
 e o apoio especializado envolvido (ex.: AEE, acompanhante terapêutico).
 Quem dá aula para o aluno pode consultar antes de planejar uma aula ou uma
-prova; só coordenação/direção podem criar ou editar o cadastro.
+prova; quem cria ou edita o cadastro é a psicopedagoga (a responsável por
+esse trabalho no dia a dia) ou coordenação/direção.
 
 Fase 2 (adicionada depois, também neste arquivo): o PEI (Plano Educacional
 Individualizado) completo — metas pedagógicas específicas por aluno, cada
 uma com status (não iniciada / em andamento / atingida), e um histórico de
 revisões periódicas em texto livre. O PEI exige que o aluno já tenha um
 cadastro de Inclusão (fase 1) — ele não existe sozinho, é uma continuação
-do mesmo cadastro. Mesma regra de acesso da fase 1: só coordenação/direção
-criam metas e registram revisões; o professor só consulta.
+do mesmo cadastro. Mesma regra de acesso da fase 1: psicopedagoga e
+coordenação/direção criam metas e registram revisões; o professor só
+consulta (acessando a ficha do aluno, ele vê tudo que a psicopedagoga
+registrou, sem poder alterar).
 
 Dado sensível — regra de acesso diferente dos outros módulos: aqui o
 assunto é laudo/necessidade específica do aluno. Por isso a leitura é mais
 restrita que o padrão do projeto: só quem efetivamente dá aula pra aquele
-aluno (professor da turma, via professor_turma) ou coordenação/direção da
-escola. Família e o próprio aluno não têm uma tela aqui — a escola trata
-isso com a família por outros canais, fora do sistema.
+aluno (professor da turma, via professor_turma), a psicopedagoga (vê todos
+os alunos da escola, já que seu trabalho atravessa turmas) ou
+coordenação/direção da escola. Família e o próprio aluno não têm uma tela
+aqui — a escola trata isso com a família por outros canais, fora do
+sistema.
 """
 from datetime import datetime, timezone
 from flask import Blueprint, render_template, request, redirect, url_for, flash
@@ -30,6 +35,13 @@ from ..db import get_db, new_id
 from ..auth import login_obrigatorio, usuario_logado
 
 bp = Blueprint("inclusao", __name__, url_prefix="/inclusao")
+
+# Quem edita o cadastro de inclusão e o PEI (cria/atualiza) — psicopedagoga é
+# a responsável direta por esse trabalho; coordenação/direção mantêm acesso
+# de supervisão. Professor nunca entra aqui, só nos papéis de leitura abaixo.
+PAPEIS_EDITOR_INCLUSAO = ("psicopedagoga", "coordenador", "direcao")
+# Quem enxerga a tela (edição + leitura) — o professor é o único que só lê.
+PAPEIS_LEITURA_INCLUSAO = ("professor",) + PAPEIS_EDITOR_INCLUSAO
 
 CATEGORIAS = [
     "TEA (Transtorno do Espectro Autista)",
@@ -67,10 +79,10 @@ def _turmas_do_professor(db, usuario_id):
 
 
 def _alunos_visiveis(db):
-    """Coordenação/direção veem todos os alunos da escola; professor só os
-    alunos das turmas em que dá aula (via professor_turma)."""
+    """Coordenação/direção/psicopedagoga veem todos os alunos da escola;
+    professor só os alunos das turmas em que dá aula (via professor_turma)."""
     u = usuario_logado()
-    if u["papel"] in ("coordenador", "direcao"):
+    if u["papel"] in ("coordenador", "direcao", "psicopedagoga"):
         return db.execute(
             "select al.id, us.nome as nome, t.nome as turma_nome, al.turma_id "
             "from alunos al "
@@ -104,7 +116,7 @@ def _aluno_visivel(db, aluno_id):
 
 
 @bp.route("/")
-@login_obrigatorio(papeis=["professor", "coordenador", "direcao"])
+@login_obrigatorio(papeis=PAPEIS_LEITURA_INCLUSAO)
 def index():
     db = get_db()
     alunos = _alunos_visiveis(db)
@@ -121,7 +133,7 @@ def index():
 
 
 @bp.route("/aluno/<aluno_id>")
-@login_obrigatorio(papeis=["professor", "coordenador", "direcao"])
+@login_obrigatorio(papeis=PAPEIS_LEITURA_INCLUSAO)
 def ficha(aluno_id):
     db = get_db()
     aluno = _aluno_visivel(db, aluno_id)
@@ -131,14 +143,14 @@ def ficha(aluno_id):
     cadastro = db.execute(
         "select * from inclusao_cadastro where aluno_id = ?", (aluno_id,)
     ).fetchone()
-    pode_editar = usuario_logado()["papel"] in ("coordenador", "direcao")
+    pode_editar = usuario_logado()["papel"] in PAPEIS_EDITOR_INCLUSAO
     return render_template(
         "inclusao_ficha.html", aluno=aluno, cadastro=cadastro, categorias=CATEGORIAS, pode_editar=pode_editar
     )
 
 
 @bp.route("/aluno/<aluno_id>/salvar", methods=["POST"])
-@login_obrigatorio(papeis=["coordenador", "direcao"])
+@login_obrigatorio(papeis=PAPEIS_EDITOR_INCLUSAO)
 def salvar(aluno_id):
     db = get_db()
     aluno = _aluno_visivel(db, aluno_id)
@@ -185,7 +197,7 @@ def salvar(aluno_id):
 
 
 @bp.route("/aluno/<aluno_id>/pei")
-@login_obrigatorio(papeis=["professor", "coordenador", "direcao"])
+@login_obrigatorio(papeis=PAPEIS_LEITURA_INCLUSAO)
 def pei(aluno_id):
     db = get_db()
     aluno = _aluno_visivel(db, aluno_id)
@@ -202,7 +214,7 @@ def pei(aluno_id):
     revisoes = db.execute(
         "select * from pei_revisoes where aluno_id = ? order by criado_em desc", (aluno_id,)
     ).fetchall()
-    pode_editar = usuario_logado()["papel"] in ("coordenador", "direcao")
+    pode_editar = usuario_logado()["papel"] in PAPEIS_EDITOR_INCLUSAO
     return render_template(
         "inclusao_pei.html", aluno=aluno, metas=metas, revisoes=revisoes,
         status_label=STATUS_META_LABEL, pode_editar=pode_editar,
@@ -210,7 +222,7 @@ def pei(aluno_id):
 
 
 @bp.route("/aluno/<aluno_id>/pei/metas/nova", methods=["POST"])
-@login_obrigatorio(papeis=["coordenador", "direcao"])
+@login_obrigatorio(papeis=PAPEIS_EDITOR_INCLUSAO)
 def criar_meta(aluno_id):
     db = get_db()
     aluno = _aluno_visivel(db, aluno_id)
@@ -234,7 +246,7 @@ def criar_meta(aluno_id):
 
 
 @bp.route("/aluno/<aluno_id>/pei/metas/<meta_id>/status", methods=["POST"])
-@login_obrigatorio(papeis=["coordenador", "direcao"])
+@login_obrigatorio(papeis=PAPEIS_EDITOR_INCLUSAO)
 def atualizar_status_meta(aluno_id, meta_id):
     db = get_db()
     aluno = _aluno_visivel(db, aluno_id)
@@ -262,7 +274,7 @@ def atualizar_status_meta(aluno_id, meta_id):
 
 
 @bp.route("/aluno/<aluno_id>/pei/revisoes/nova", methods=["POST"])
-@login_obrigatorio(papeis=["coordenador", "direcao"])
+@login_obrigatorio(papeis=PAPEIS_EDITOR_INCLUSAO)
 def criar_revisao(aluno_id):
     db = get_db()
     aluno = _aluno_visivel(db, aluno_id)
