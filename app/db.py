@@ -155,6 +155,25 @@ create table if not exists inclusao_cadastro (
     criado_em text not null default (datetime('now')),
     atualizado_em text not null default (datetime('now'))
 );
+
+create table if not exists pei_metas (
+    id text primary key,
+    aluno_id text not null references alunos(id),
+    descricao text not null,
+    area text,
+    status text not null check (status in ('nao_iniciada','em_andamento','atingida')) default 'nao_iniciada',
+    criado_por_usuario_id text not null references usuarios(id),
+    criado_em text not null default (datetime('now')),
+    atualizado_em text not null default (datetime('now'))
+);
+
+create table if not exists pei_revisoes (
+    id text primary key,
+    aluno_id text not null references alunos(id),
+    texto text not null,
+    criado_por_usuario_id text not null references usuarios(id),
+    criado_em text not null default (datetime('now'))
+);
 """
 
 
