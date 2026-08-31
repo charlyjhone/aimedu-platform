@@ -163,6 +163,58 @@ def run():
         else:
             print("Usuário de família já existe — pulando.")
 
+        # Bloco independente: vincula o professor de demonstração à turma via
+        # professor_turma — sem isso, o módulo de Inclusão não teria como
+        # mostrar nenhum aluno para o papel "professor" testar. Mesmo padrão
+        # de idempotência independente dos blocos acima.
+        if db.execute("select count(*) c from professores").fetchone()["c"] == 0:
+            professor_usuario = db.execute(
+                "select id from usuarios where email = 'professor@escolaa.com.br'"
+            ).fetchone()
+            turma = db.execute("select id from turmas limit 1").fetchone()
+            if professor_usuario and turma:
+                professor_id = new_id()
+                db.execute(
+                    "insert into professores (id, usuario_id, disciplina) values (?,?,?)",
+                    (professor_id, professor_usuario["id"], "Matemática"),
+                )
+                db.execute(
+                    "insert into professor_turma (professor_id, turma_id) values (?,?)",
+                    (professor_id, turma["id"]),
+                )
+                print("Professor de demonstração vinculado à turma.")
+            else:
+                print("Professor ou turma de demonstração não encontrados — pulando vínculo.")
+        else:
+            print("Registro de professor já existe — pulando.")
+
+        # Bloco independente: cadastro de inclusão de demonstração para a aluna
+        # de demonstração, para o módulo já nascer com algo visível.
+        if db.execute("select count(*) c from inclusao_cadastro").fetchone()["c"] == 0:
+            aluno_row = db.execute(
+                "select al.id from alunos al join usuarios us on us.id = al.usuario_id "
+                "where us.email = 'aluno@escolaa.com.br'"
+            ).fetchone()
+            coordenacao = db.execute(
+                "select id from usuarios where email = 'coordenacao@escolaa.com.br'"
+            ).fetchone()
+            if aluno_row and coordenacao:
+                db.execute(
+                    "insert into inclusao_cadastro "
+                    "(id, aluno_id, categoria, diagnostico_formal, adaptacoes, apoio_especializado, observacoes, criado_por_usuario_id) "
+                    "values (?,?,?,?,?,?,?,?)",
+                    (new_id(), aluno_row["id"], "TDAH", True,
+                     "Tempo adicional de 25% em provas; instruções repetidas por escrito; sentar nas primeiras carteiras.",
+                     "Acompanhamento psicopedagógico quinzenal (fora da escola).",
+                     "Cadastro de demonstração — dados fictícios.",
+                     coordenacao["id"]),
+                )
+                print("Cadastro de inclusão de demonstração criado.")
+            else:
+                print("Aluno ou coordenação de demonstração não encontrados — pulando cadastro de inclusão.")
+        else:
+            print("Cadastro de inclusão já existe — pulando.")
+
         if db.execute("select count(*) c from itens_banco").fetchone()["c"] == 0:
             import json
             for item in ITENS:
