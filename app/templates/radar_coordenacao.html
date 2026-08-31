@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block titulo %}Radar da Coordenação — AIM.Edu{% endblock %}
+{% block conteudo %}
+
+<div class="card">
+  <h2>Radar da Coordenação</h2>
+  <p>
+    <span class="tag nivel-alto">{{ contagem.alto }} alto</span>
+    &nbsp;<span class="tag nivel-medio">{{ contagem.medio }} médio</span>
+    &nbsp;<span class="tag nivel-baixo">{{ contagem.baixo }} baixo</span>
+    &nbsp;pendentes de análise agora.
+  </p>
+
+  <form method="get" style="display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; margin-top:14px;">
+    <div>
+      <label for="turma">Turma</label>
+      <select name="turma" id="turma">
+        <option value="">Todas</option>
+        {% for t in turmas %}
+        <option value="{{ t['id'] }}" {% if turma_filtro == t['id'] %}selected{% endif %}>{{ t['nome'] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="nivel">Nível</label>
+      <select name="nivel" id="nivel">
+        <option value="">Todos</option>
+        <option value="alto" {% if nivel_filtro == 'alto' %}selected{% endif %}>Alto</option>
+        <option value="medio" {% if nivel_filtro == 'medio' %}selected{% endif %}>Médio</option>
+        <option value="baixo" {% if nivel_filtro == 'baixo' %}selected{% endif %}>Baixo</option>
+      </select>
+    </div>
+    <div>
+      <label for="status">Status</label>
+      <select name="status" id="status">
+        <option value="pendente" {% if status_filtro == 'pendente' %}selected{% endif %}>Pendentes</option>
+        <option value="resolvido" {% if status_filtro == 'resolvido' %}selected{% endif %}>Resolvidos</option>
+        <option value="todos" {% if status_filtro == 'todos' %}selected{% endif %}>Todos</option>
+      </select>
+    </div>
+    <div>
+      <button class="botao" type="submit">Filtrar</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  {% if alertas %}
+  <table>
+    <tr><th>Turma</th><th>Aluno</th><th>Nível</th><th>Motivo</th><th>Data</th><th>Status</th><th></th></tr>
+    {% for a in alertas %}
+    <tr>
+      <td>{{ a['turma_nome'] }}</td>
+      <td>
+        {% if a['aluno_id'] %}
+        <a href="{{ url_for('radar_coordenacao.aluno', aluno_id=a['aluno_id']) }}">{{ a['aluno_nome'] or '—' }}</a>
+        {% else %}
+        —
+        {% endif %}
+      </td>
+      <td class="nivel-{{ a['nivel'] }}">{{ a['nivel']|capitalize }}</td>
+      <td>{{ a['motivo'] }}</td>
+      <td>{{ a['criado_em']|data }}</td>
+      <td>{{ 'Resolvido' if a['resolvido'] else 'Pendente' }}</td>
+      <td>
+        <form method="post" action="{{ url_for('radar_coordenacao.marcar', alerta_id=a['id']) }}">
+          <input type="hidden" name="turma" value="{{ turma_filtro }}">
+          <input type="hidden" name="nivel" value="{{ nivel_filtro }}">
+          <input type="hidden" name="status" value="{{ status_filtro }}">
+          {% if a['resolvido'] %}
+          <input type="hidden" name="acao" value="reabrir">
+          <button class="botao" type="submit" style="background:#8a8a8a;">Reabrir</button>
+          {% else %}
+          <input type="hidden" name="acao" value="resolver">
+          <button class="botao" type="submit">Marcar resolvido</button>
+          {% endif %}
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>Nenhum alerta encontrado para esse filtro.</p>
+  {% endif %}
+</div>
+
+{% endblock %}
