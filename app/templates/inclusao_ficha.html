@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block titulo %}{{ aluno['nome'] }} — Inclusão{% endblock %}
+{% block conteudo %}
+<div class="card">
+  <h2>{{ aluno['nome'] }}</h2>
+  <p>Turma: {{ aluno['turma_nome'] }}</p>
+</div>
+
+{% if not pode_editar %}
+  {% if cadastro %}
+  <div class="card">
+    <h2>Cadastro de inclusão</h2>
+    <p><strong>Categoria:</strong> {{ cadastro['categoria'] }}</p>
+    <p><strong>Laudo formal:</strong> {{ 'Sim' if cadastro['diagnostico_formal'] else 'Não informado' }}</p>
+    <p><strong>Adaptações em sala/avaliações:</strong><br>{{ cadastro['adaptacoes'] }}</p>
+    {% if cadastro['apoio_especializado'] %}
+    <p><strong>Apoio especializado:</strong><br>{{ cadastro['apoio_especializado'] }}</p>
+    {% endif %}
+    {% if cadastro['observacoes'] %}
+    <p><strong>Observações:</strong><br>{{ cadastro['observacoes'] }}</p>
+    {% endif %}
+    <p style="color:#666; font-size:0.8rem; margin-top:16px;">Atualizado em {{ cadastro['atualizado_em']|data }}.</p>
+  </div>
+  {% else %}
+  <div class="card">
+    <p>Ainda não há cadastro de inclusão para este aluno.</p>
+  </div>
+  {% endif %}
+
+{% else %}
+  <div class="card">
+    <h2>{{ 'Editar' if cadastro else 'Criar' }} cadastro de inclusão</h2>
+    <form method="post" action="{{ url_for('inclusao.salvar', aluno_id=aluno['id']) }}">
+      <label for="categoria">Categoria</label>
+      <select name="categoria" id="categoria" required style="width:100%; padding:10px; border:1px solid var(--borda); border-radius:6px; font-size:0.95rem;">
+        <option value="">Selecione...</option>
+        {% for c in categorias %}
+        <option value="{{ c }}" {% if cadastro and cadastro['categoria'] == c %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+
+      <label style="display:flex; align-items:center; gap:8px; margin-top:16px;">
+        <input type="checkbox" name="diagnostico_formal" {% if cadastro and cadastro['diagnostico_formal'] %}checked{% endif %}>
+        Há laudo formal
+      </label>
+
+      <label for="adaptacoes" style="margin-top:16px;">Adaptações em sala/avaliações</label>
+      <textarea name="adaptacoes" id="adaptacoes" rows="4" required placeholder="Ex.: tempo adicional de 25% em provas, material em fonte ampliada, instruções repetidas por escrito..." style="width:100%; padding:12px; border:1px solid var(--borda); border-radius:6px; font-size:0.95rem; font-family:inherit;">{{ cadastro['adaptacoes'] if cadastro else '' }}</textarea>
+
+      <label for="apoio_especializado" style="margin-top:16px;">Apoio especializado (opcional)</label>
+      <input type="text" name="apoio_especializado" id="apoio_especializado" value="{{ cadastro['apoio_especializado'] if cadastro else '' }}" placeholder="Ex.: AEE 2x por semana, acompanhante terapêutico" style="width:100%; padding:10px; border:1px solid var(--borda); border-radius:6px; font-size:0.95rem;">
+
+      <label for="observacoes" style="margin-top:16px;">Observações (opcional)</label>
+      <textarea name="observacoes" id="observacoes" rows="3" style="width:100%; padding:12px; border:1px solid var(--borda); border-radius:6px; font-size:0.95rem; font-family:inherit;">{{ cadastro['observacoes'] if cadastro else '' }}</textarea>
+
+      <button class="botao" type="submit" style="margin-top:16px;">Salvar cadastro</button>
+    </form>
+    {% if cadastro %}
+    <p style="color:#666; font-size:0.8rem; margin-top:16px;">Atualizado em {{ cadastro['atualizado_em']|data }}.</p>
+    {% endif %}
+  </div>
+{% endif %}
+
+<a href="{{ url_for('inclusao.index') }}">&larr; Voltar</a>
+{% endblock %}
