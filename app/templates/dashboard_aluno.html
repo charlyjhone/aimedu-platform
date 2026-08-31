@@ -7,6 +7,12 @@
   <a class="botao" href="{{ url_for('diagnostico_matematica.iniciar') }}">Iniciar novo diagnóstico</a>
 </div>
 
+<div class="card">
+  <h2>Bússola Vocacional</h2>
+  <p>Um questionário rápido de interesses que, cruzado com seus diagnósticos, ajuda a enxergar caminhos possíveis.</p>
+  <a class="botao" href="{{ url_for('bussola_vocacional.index') }}">Abrir Bússola Vocacional</a>
+</div>
+
 {% if diagnosticos %}
 <div class="card">
   <h2>Meus diagnósticos anteriores</h2>
@@ -15,7 +21,7 @@
     {% for d in diagnosticos %}
       {% if d['finalizado_em'] %}
       <tr>
-        <td>{{ d['finalizado_em'] }}</td>
+        <td>{{ d['finalizado_em']|data }}</td>
         <td>{{ d['nivel_final'] }}/5</td>
         <td>{{ d['resumo_ia'][:120] }}…</td>
       </tr>
