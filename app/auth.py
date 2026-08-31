@@ -68,16 +68,11 @@ def painel():
         ).fetchall()
         return render_template("dashboard_aluno.html", u=u, aluno=aluno, diagnosticos=diagnosticos)
     if u["papel"] in ("coordenador", "direcao"):
+        from .modules.radar_coordenacao import _contagem_por_nivel
+
         total_diag = db.execute("select count(*) c from diagnosticos").fetchone()["c"]
-        alertas = db.execute(
-            "select a.*, al.id as aluno_id, t.nome as turma_nome, us.nome as aluno_nome "
-            "from alertas_radar a "
-            "join turmas t on t.id = a.turma_id "
-            "left join alunos al on al.id = a.aluno_id "
-            "left join usuarios us on us.id = al.usuario_id "
-            "where a.resolvido = false order by a.criado_em desc"
-        ).fetchall()
-        return render_template("dashboard_coordenacao.html", u=u, total_diag=total_diag, alertas=alertas)
+        contagem = _contagem_por_nivel(db, u["escola_id"])
+        return render_template("dashboard_coordenacao.html", u=u, total_diag=total_diag, contagem=contagem)
     if u["papel"] == "professor":
         return render_template("dashboard_professor.html", u=u)
     return render_template("dashboard_aluno.html", u=u, aluno=None, diagnosticos=[])
