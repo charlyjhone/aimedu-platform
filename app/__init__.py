@@ -3,7 +3,7 @@ from flask import Flask
 
 from .db import init_db
 from . import auth
-from .modules import diagnostico_matematica, radar_coordenacao
+from .modules import diagnostico_matematica, radar_coordenacao, bussola_vocacional
 
 
 def _fmt_data(valor):
@@ -22,4 +22,5 @@ def create_app():
     app.register_blueprint(auth.bp)
     app.register_blueprint(diagnostico_matematica.bp)
     app.register_blueprint(radar_coordenacao.bp)
+    app.register_blueprint(bussola_vocacional.bp)
     return app
