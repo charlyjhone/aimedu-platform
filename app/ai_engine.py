@@ -110,3 +110,122 @@ def perfil_vocacional(pontuacoes: dict, nivel_matematica: float | None = None) -
 
     texto += " Converse com a coordenação sobre trilhas, cursos e profissões ligadas a essas áreas."
     return texto
+
+
+CONECTIVOS = [
+    "portanto", "por isso", "dessa forma", "desse modo", "assim sendo", "logo",
+    "entretanto", "no entanto", "contudo", "todavia", "além disso", "ademais",
+    "outrossim", "por conseguinte", "em suma", "nesse sentido", "sob essa ótica",
+]
+MARCAS_INFORMAIS = ["vc ", " pq ", "tipo assim", "mano", "slk", "kkk", "!!!", "afff", " né "]
+AGENTES_INTERVENCAO = ["governo", "poder público", "estado", "escola", "família", "mídia", "sociedade", "ongs", "ministério"]
+ACOES_INTERVENCAO = ["campanha", "fiscalização", "investimento", "conscientização", "educação", "política pública", "lei ", "projeto", "criação de"]
+
+
+def corrigir_redacao(tema: str, texto: str) -> dict:
+    """Estima uma nota nas 5 competências do ENEM (0 a 200 cada, múltiplos de
+    40) a partir de heurísticas de texto (tamanho, parágrafos, conectivos,
+    palavras do tema, indícios de proposta de intervenção). Retorna um dict
+    com nota_c1..nota_c5, nota_total e feedback_ia.
+
+    IMPORTANTE: isto é uma estimativa automática por regras, não uma correção
+    oficial — não há um corretor humano nem um modelo de linguagem por trás
+    disto hoje (ver aviso no topo deste arquivo). Serve para dar um primeiro
+    retorno rápido ao aluno; a palavra final é sempre do professor."""
+    if PROVEDOR_ATIVO == "llm":
+        prompt = (
+            f"Corrija esta redação dissertativa-argumentativa no modelo ENEM. "
+            f"Tema: {tema!r}. Texto: {texto!r}. Dê nota de 0 a 200 (múltiplos de 40) "
+            "em cada uma das 5 competências do ENEM e um feedback construtivo em português."
+        )
+        return _gerar_llm(prompt)
+
+    palavras = texto.split()
+    n_palavras = len(palavras)
+    paragrafos = [p.strip() for p in texto.split("\n") if p.strip()]
+    n_paragrafos = len(paragrafos)
+    texto_lower = texto.lower()
+
+    if n_palavras < 50:
+        return {
+            "nota_c1": 0, "nota_c2": 0, "nota_c3": 0, "nota_c4": 0, "nota_c5": 0,
+            "nota_total": 0,
+            "feedback_ia": (
+                "O texto está muito curto para ser avaliado como uma redação dissertativa-argumentativa "
+                "completa (o ENEM já zera textos muito curtos). Desenvolva introdução, pelo menos dois "
+                "parágrafos de argumentação e uma conclusão com proposta de intervenção — no total, "
+                "normalmente entre 200 e 350 palavras."
+            ),
+        }
+
+    # C1 — domínio da norma culta: penaliza marcas de informalidade encontradas no texto.
+    penalidades_c1 = sum(texto_lower.count(m) for m in MARCAS_INFORMAIS)
+    pontos_c1 = max(1, 5 - penalidades_c1)
+
+    # C2 — compreensão do tema: quantas palavras "de conteúdo" do tema aparecem no texto.
+    palavras_tema = [p.lower() for p in (tema or "").split() if len(p) >= 5]
+    if palavras_tema:
+        presentes = sum(1 for p in palavras_tema if p in texto_lower)
+        proporcao = presentes / len(palavras_tema)
+        pontos_c2 = 5 if proporcao >= 0.6 else 4 if proporcao >= 0.4 else 3 if proporcao >= 0.2 else 2 if presentes else 1
+    else:
+        pontos_c2 = 3  # sem tema informado, não dá pra avaliar aderência — nota neutra
+
+    # C3 — organização/argumentação: estrutura em parágrafos e desenvolvimento (nº de palavras).
+    pontos_estrutura = 5 if n_paragrafos in (4, 5) else 4 if n_paragrafos in (3, 6) else 2 if n_paragrafos >= 2 else 1
+    pontos_extensao = 5 if n_palavras >= 250 else 4 if n_palavras >= 180 else 3 if n_palavras >= 120 else 2
+    pontos_c3 = round((pontos_estrutura + pontos_extensao) / 2)
+
+    # C4 — coesão: densidade de conectivos ao longo do texto.
+    n_conectivos = sum(texto_lower.count(c) for c in CONECTIVOS)
+    densidade = n_conectivos / n_paragrafos if n_paragrafos else 0
+    pontos_c4 = 5 if densidade >= 1.5 else 4 if densidade >= 1 else 3 if densidade >= 0.5 else 2 if n_conectivos >= 1 else 1
+
+    # C5 — proposta de intervenção: procura agente + ação no último parágrafo (a conclusão).
+    conclusao = paragrafos[-1].lower() if paragrafos else ""
+    tem_agente = any(a in conclusao for a in AGENTES_INTERVENCAO)
+    tem_acao = any(a in conclusao for a in ACOES_INTERVENCAO)
+    pontos_c5 = 5 if (tem_agente and tem_acao) else 3 if (tem_agente or tem_acao) else 1
+
+    notas = {
+        "nota_c1": pontos_c1 * 40,
+        "nota_c2": pontos_c2 * 40,
+        "nota_c3": pontos_c3 * 40,
+        "nota_c4": pontos_c4 * 40,
+        "nota_c5": pontos_c5 * 40,
+    }
+    nota_total = sum(notas.values())
+
+    piores = sorted(notas.items(), key=lambda kv: kv[1])[:2]
+    nomes_competencia = {
+        "nota_c1": "domínio da norma culta (C1)",
+        "nota_c2": "compreensão do tema (C2)",
+        "nota_c3": "organização e argumentação (C3)",
+        "nota_c4": "coesão e coerência, uso de conectivos (C4)",
+        "nota_c5": "proposta de intervenção (C5)",
+    }
+    piores_txt = " e ".join(nomes_competencia[c] for c, _ in piores)
+
+    feedback = (
+        f"Estimativa automática: {nota_total}/1000. As competências que mais precisam de atenção agora "
+        f"são {piores_txt}. "
+    )
+    if pontos_c5 < 4:
+        feedback += (
+            "Na conclusão, deixe claro QUEM deve agir (governo, escola, família, mídia, sociedade) e QUAL "
+            "ação concreta deve ser tomada (uma campanha, uma lei, um investimento, um projeto) — essa é "
+            "a proposta de intervenção que o ENEM cobra na competência 5. "
+        )
+    if pontos_c4 < 4:
+        feedback += (
+            "Use mais conectivos entre parágrafos e frases (portanto, além disso, no entanto, dessa forma) "
+            "para deixar a argumentação mais costurada. "
+        )
+    feedback += (
+        "Lembre-se: esta é uma correção automática por regras, útil como primeiro retorno rápido — "
+        "peça também a leitura de um professor antes de considerar a nota final."
+    )
+
+    notas["nota_total"] = nota_total
+    notas["feedback_ia"] = feedback
+    return notas
