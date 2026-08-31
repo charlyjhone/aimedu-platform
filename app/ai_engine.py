@@ -213,19 +213,4 @@ def corrigir_redacao(tema: str, texto: str) -> dict:
     if pontos_c5 < 4:
         feedback += (
             "Na conclusão, deixe claro QUEM deve agir (governo, escola, família, mídia, sociedade) e QUAL "
-            "ação concreta deve ser tomada (uma campanha, uma lei, um investimento, um projeto) — essa é "
-            "a proposta de intervenção que o ENEM cobra na competência 5. "
-        )
-    if pontos_c4 < 4:
-        feedback += (
-            "Use mais conectivos entre parágrafos e frases (portanto, além disso, no entanto, dessa forma) "
-            "para deixar a argumentação mais costurada. "
-        )
-    feedback += (
-        "Lembre-se: esta é uma correção automática por regras, útil como primeiro retorno rápido — "
-        "peça também a leitura de um professor antes de considerar a nota final."
-    )
-
-    notas["nota_total"] = nota_total
-    notas["feedback_ia"] = feedback
-    return notas
+            "ação
