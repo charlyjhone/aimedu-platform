@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block titulo %}Assistente de dúvidas — AIM.Edu{% endblock %}
+{% block conteudo %}
+
+<div class="card">
+  <h2>Assistente de dúvidas</h2>
+  <p style="color:#666; font-size:0.85rem;">
+    Pergunte sobre o funcionamento do AIM.Edu (PEI, Inclusão, diagnóstico, redação, alertas, senha, importação...).
+    Hoje as respostas vêm de um FAQ por palavras-chave; se não achar sua dúvida, procure a coordenação.
+  </p>
+  <form method="post" action="{{ url_for('coordenador_professores.duvidas') }}">
+    <label for="pergunta">Sua dúvida</label>
+    <textarea name="pergunta" id="pergunta" rows="3" style="width:100%; padding:10px; border:1px solid var(--borda); border-radius:6px; font-size:0.95rem;" required></textarea>
+    <p><button class="botao" type="submit">Perguntar</button></p>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Histórico</h2>
+  {% if historico %}
+  {% for h in historico %}
+  <div style="margin-bottom:18px; padding-bottom:14px; border-bottom:1px solid var(--borda);">
+    <p><strong>Você perguntou:</strong> {{ h['pergunta'] }}</p>
+    <p><strong>Resposta:</strong> {{ h['resposta_ia'] }}</p>
+    <p style="color:#888; font-size:0.8rem;">{{ h['criado_em']|data }}</p>
+  </div>
+  {% endfor %}
+  {% else %}
+  <p>Nenhuma dúvida registrada ainda.</p>
+  {% endif %}
+</div>
+
+<p><a href="{{ url_for('coordenador_professores.index') }}">&larr; Voltar</a></p>
+
+{% endblock %}
