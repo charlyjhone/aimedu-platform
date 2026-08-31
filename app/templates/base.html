@@ -7,7 +7,7 @@
 </head>
 <body>
   <header class="topo">
-    <div class="marca">AIM.Edu</div>
+    <a class="marca" href="{{ url_for('auth.painel') }}">AIM.Edu</a>
     {% if session.get('usuario') %}
       <div>
         <span style="margin-right:16px;">{{ session['usuario']['nome'] }} · {{ session['usuario']['papel']|capitalize }}</span>
