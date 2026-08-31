@@ -1,216 +1,28 @@
-"""
-Camada única de IA do AIM.Edu — TODOS os módulos (diagnóstico, redação,
-relatórios, radar, bússola, coordenador de professores) chamam funções
-daqui, nunca uma API de IA diretamente. Isso garante duas coisas que o
-projeto pediu explicitamente:
+import os
+from flask import Flask
 
-  1. Projeto único e interligado: qualquer módulo novo reaproveita a
-     mesma camada, os mesmos dados de aluno/turma e o mesmo estilo de
-     saída.
-  2. Zero vendor lock-in: hoje existe UMA implementação (`_gerar_regra`,
-     100% local, sem depender de nenhum provedor). Quando uma chave de
-     IA (OpenAI, Google, Anthropic, o que for) estiver disponível neste
-     ambiente, basta implementar `_gerar_llm()` e trocar a variável
-     `PROVEDOR_ATIVO` abaixo — nenhum outro arquivo do projeto muda.
-
-Por que está assim agora: este ambiente de desenvolvimento não tem
-acesso de rede a provedores de IA externos. A lógica adaptativa e os
-textos abaixo são gerados por regras determinísticas (nível de acerto,
-dificuldade, eixo da BNCC), para que o produto já funcione de ponta a
-ponta hoje. Trocar para IA generativa real depois é uma troca de
-"motor", não uma reconstrução do produto.
-"""
-
-PROVEDOR_ATIVO = "regra"  # trocar para "llm" quando houver acesso a um provedor
+from .db import init_db
+from . import auth
+from .modules import diagnostico_matematica, radar_coordenacao, bussola_vocacional, redacao, relatorios_familia
 
 
-def _gerar_llm(prompt: str) -> str:
-    raise NotImplementedError(
-        "Nenhum provedor de IA está conectado a este ambiente ainda. "
-        "Configure a chave e implemente esta função para ativar o motor de IA real."
-    )
+def _fmt_data(valor):
+    """Formata datas iguais para SQLite (texto) e Postgres (datetime já
+    decodificado pelo psycopg2) — usado nos templates como filtro |data."""
+    if not valor:
+        return "—"
+    return str(valor)[:16].replace("T", " ")
 
 
-def resumo_diagnostico(disciplina: str, acertos: int, total: int, nivel_final: float, por_eixo: dict) -> str:
-    """Gera o texto de fechamento do diagnóstico adaptativo (o que hoje é
-    'regra' e amanhã pode virar uma chamada de LLM sem mudar quem chama)."""
-    if PROVEDOR_ATIVO == "llm":
-        prompt = (
-            f"Aluno fez diagnóstico de {disciplina}. Acertos: {acertos}/{total}. "
-            f"Nível final estimado: {nivel_final:.1f}/5. Desempenho por eixo: {por_eixo}. "
-            "Escreva um retorno curto, construtivo, em português, para a família."
-        )
-        return _gerar_llm(prompt)
-
-    pct = acertos / total if total else 0
-    if pct >= 0.75:
-        tom = "um desempenho muito sólido"
-    elif pct >= 0.5:
-        tom = "um desempenho dentro do esperado, com pontos específicos para reforçar"
-    else:
-        tom = "sinais claros de que o aluno precisa de apoio mais próximo agora"
-
-    piores = sorted(por_eixo.items(), key=lambda kv: kv[1])[:2]
-    piores_txt = ", ".join(f"{eixo} ({round(taxa*100)}% de acerto)" for eixo, taxa in piores) if piores else "—"
-
-    return (
-        f"O aluno respondeu {total} questões adaptativas de {disciplina}, acertando {acertos} "
-        f"({round(pct*100)}%). O sistema ajustou a dificuldade a cada resposta e estimou o nível "
-        f"atual em {nivel_final:.1f} de 5. Isso indica {tom}. Os eixos que mais precisam de atenção "
-        f"agora são: {piores_txt}. Recomendação: priorizar exercícios nesses eixos nas próximas duas semanas."
-    )
-
-
-def perfil_vocacional(pontuacoes: dict, nivel_matematica: float | None = None) -> str:
-    """Gera o texto de orientação da Bússola Vocacional a partir da pontuação
-    (0 a 10) de cada área de interesse. Quando existe um diagnóstico de
-    Matemática já feito pelo aluno, cruza os dois — é aqui que a Bússola
-    "conversa" com o Diagnóstico Adaptativo pelo mesmo banco de dados."""
-    if PROVEDOR_ATIVO == "llm":
-        prompt = (
-            f"Aluno respondeu um questionário de interesses vocacionais com estas pontuações "
-            f"(0 a 10 por área): {pontuacoes}. Nível estimado em Matemática (0 a 5, se houver): "
-            f"{nivel_matematica}. Escreva uma orientação vocacional curta, construtiva, em "
-            "português, para um estudante do ensino médio, sem soar definitiva."
-        )
-        return _gerar_llm(prompt)
-
-    ordenado = sorted(pontuacoes.items(), key=lambda kv: kv[1], reverse=True)
-    topo_valor = ordenado[0][1]
-    top_areas = [area for area, valor in ordenado if valor >= topo_valor - 1 and valor > 0]
-    if len(top_areas) == 1:
-        top_txt = top_areas[0]
-    else:
-        top_txt = ", ".join(top_areas[:-1]) + " e " + top_areas[-1]
-
-    texto = (
-        f"Com base nas suas respostas, sua maior afinidade hoje aparece em {top_txt}. "
-        "Isso não é uma resposta definitiva sobre sua carreira — é um retrato do que mais "
-        "chamou sua atenção neste momento, útil como ponto de partida."
-    )
-
-    if nivel_matematica is not None:
-        exatas_no_topo = any("Exatas" in area for area in top_areas)
-        if exatas_no_topo and nivel_matematica >= 3.5:
-            texto += (
-                " Isso combina com o seu bom desempenho no Diagnóstico Adaptativo de Matemática, "
-                "o que reforça esse caminho como uma opção sólida."
-            )
-        elif exatas_no_topo and nivel_matematica < 3.5:
-            texto += (
-                " Seu Diagnóstico Adaptativo de Matemática ainda mostra espaço para evoluir — "
-                "vale reforçar a base nessa disciplina para seguir esse caminho com mais segurança."
-            )
-        elif not exatas_no_topo and nivel_matematica >= 4:
-            texto += (
-                " Vale notar: seu Diagnóstico de Matemática mostrou um desempenho forte mesmo essa "
-                "não sendo sua área de maior interesse — pode valer a pena considerar cursos que "
-                "combinem exatas com a sua área principal."
-            )
-
-    texto += " Converse com a coordenação sobre trilhas, cursos e profissões ligadas a essas áreas."
-    return texto
-
-
-CONECTIVOS = [
-    "portanto", "por isso", "dessa forma", "desse modo", "assim sendo", "logo",
-    "entretanto", "no entanto", "contudo", "todavia", "além disso", "ademais",
-    "outrossim", "por conseguinte", "em suma", "nesse sentido", "sob essa ótica",
-]
-MARCAS_INFORMAIS = ["vc ", " pq ", "tipo assim", "mano", "slk", "kkk", "!!!", "afff", " né "]
-AGENTES_INTERVENCAO = ["governo", "poder público", "estado", "escola", "família", "mídia", "sociedade", "ongs", "ministério"]
-ACOES_INTERVENCAO = ["campanha", "fiscalização", "investimento", "conscientização", "educação", "política pública", "lei ", "projeto", "criação de"]
-
-
-def corrigir_redacao(tema: str, texto: str) -> dict:
-    """Estima uma nota nas 5 competências do ENEM (0 a 200 cada, múltiplos de
-    40) a partir de heurísticas de texto (tamanho, parágrafos, conectivos,
-    palavras do tema, indícios de proposta de intervenção). Retorna um dict
-    com nota_c1..nota_c5, nota_total e feedback_ia.
-
-    IMPORTANTE: isto é uma estimativa automática por regras, não uma correção
-    oficial — não há um corretor humano nem um modelo de linguagem por trás
-    disto hoje (ver aviso no topo deste arquivo). Serve para dar um primeiro
-    retorno rápido ao aluno; a palavra final é sempre do professor."""
-    if PROVEDOR_ATIVO == "llm":
-        prompt = (
-            f"Corrija esta redação dissertativa-argumentativa no modelo ENEM. "
-            f"Tema: {tema!r}. Texto: {texto!r}. Dê nota de 0 a 200 (múltiplos de 40) "
-            "em cada uma das 5 competências do ENEM e um feedback construtivo em português."
-        )
-        return _gerar_llm(prompt)
-
-    palavras = texto.split()
-    n_palavras = len(palavras)
-    paragrafos = [p.strip() for p in texto.split("\n") if p.strip()]
-    n_paragrafos = len(paragrafos)
-    texto_lower = texto.lower()
-
-    if n_palavras < 50:
-        return {
-            "nota_c1": 0, "nota_c2": 0, "nota_c3": 0, "nota_c4": 0, "nota_c5": 0,
-            "nota_total": 0,
-            "feedback_ia": (
-                "O texto está muito curto para ser avaliado como uma redação dissertativa-argumentativa "
-                "completa (o ENEM já zera textos muito curtos). Desenvolva introdução, pelo menos dois "
-                "parágrafos de argumentação e uma conclusão com proposta de intervenção — no total, "
-                "normalmente entre 200 e 350 palavras."
-            ),
-        }
-
-    # C1 — domínio da norma culta: penaliza marcas de informalidade encontradas no texto.
-    penalidades_c1 = sum(texto_lower.count(m) for m in MARCAS_INFORMAIS)
-    pontos_c1 = max(1, 5 - penalidades_c1)
-
-    # C2 — compreensão do tema: quantas palavras "de conteúdo" do tema aparecem no texto.
-    palavras_tema = [p.lower() for p in (tema or "").split() if len(p) >= 5]
-    if palavras_tema:
-        presentes = sum(1 for p in palavras_tema if p in texto_lower)
-        proporcao = presentes / len(palavras_tema)
-        pontos_c2 = 5 if proporcao >= 0.6 else 4 if proporcao >= 0.4 else 3 if proporcao >= 0.2 else 2 if presentes else 1
-    else:
-        pontos_c2 = 3  # sem tema informado, não dá pra avaliar aderência — nota neutra
-
-    # C3 — organização/argumentação: estrutura em parágrafos e desenvolvimento (nº de palavras).
-    pontos_estrutura = 5 if n_paragrafos in (4, 5) else 4 if n_paragrafos in (3, 6) else 2 if n_paragrafos >= 2 else 1
-    pontos_extensao = 5 if n_palavras >= 250 else 4 if n_palavras >= 180 else 3 if n_palavras >= 120 else 2
-    pontos_c3 = round((pontos_estrutura + pontos_extensao) / 2)
-
-    # C4 — coesão: densidade de conectivos ao longo do texto.
-    n_conectivos = sum(texto_lower.count(c) for c in CONECTIVOS)
-    densidade = n_conectivos / n_paragrafos if n_paragrafos else 0
-    pontos_c4 = 5 if densidade >= 1.5 else 4 if densidade >= 1 else 3 if densidade >= 0.5 else 2 if n_conectivos >= 1 else 1
-
-    # C5 — proposta de intervenção: procura agente + ação no último parágrafo (a conclusão).
-    conclusao = paragrafos[-1].lower() if paragrafos else ""
-    tem_agente = any(a in conclusao for a in AGENTES_INTERVENCAO)
-    tem_acao = any(a in conclusao for a in ACOES_INTERVENCAO)
-    pontos_c5 = 5 if (tem_agente and tem_acao) else 3 if (tem_agente or tem_acao) else 1
-
-    notas = {
-        "nota_c1": pontos_c1 * 40,
-        "nota_c2": pontos_c2 * 40,
-        "nota_c3": pontos_c3 * 40,
-        "nota_c4": pontos_c4 * 40,
-        "nota_c5": pontos_c5 * 40,
-    }
-    nota_total = sum(notas.values())
-
-    piores = sorted(notas.items(), key=lambda kv: kv[1])[:2]
-    nomes_competencia = {
-        "nota_c1": "domínio da norma culta (C1)",
-        "nota_c2": "compreensão do tema (C2)",
-        "nota_c3": "organização e argumentação (C3)",
-        "nota_c4": "coesão e coerência, uso de conectivos (C4)",
-        "nota_c5": "proposta de intervenção (C5)",
-    }
-    piores_txt = " e ".join(nomes_competencia[c] for c, _ in piores)
-
-    feedback = (
-        f"Estimativa automática: {nota_total}/1000. As competências que mais precisam de atenção agora "
-        f"são {piores_txt}. "
-    )
-    if pontos_c5 < 4:
-        feedback += (
-            "Na conclusão, deixe claro QUEM deve agir (governo, escola, família, mídia, sociedade) e QUAL "
-            "ação
+def create_app():
+    app = Flask(__name__)
+    app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-troque-em-producao")
+    app.jinja_env.filters["data"] = _fmt_data
+    init_db(app)
+    app.register_blueprint(auth.bp)
+    app.register_blueprint(diagnostico_matematica.bp)
+    app.register_blueprint(radar_coordenacao.bp)
+    app.register_blueprint(bussola_vocacional.bp)
+    app.register_blueprint(redacao.bp)
+    app.register_blueprint(relatorios_familia.bp)
+    return app
