@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block titulo %}Meus filhos — AIM.Edu{% endblock %}
+{% block conteudo %}
+<div class="card">
+  <h2>Alunos vinculados à sua conta</h2>
+  {% if alunos %}
+  <table>
+    <tr><th>Nome</th><th>Turma</th><th></th></tr>
+    {% for a in alunos %}
+    <tr>
+      <td>{{ a['nome'] }}</td>
+      <td>{{ a['turma_nome'] }}</td>
+      <td><a href="{{ url_for('relatorios_familia.aluno', aluno_id=a['id']) }}">Ver relatórios</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>Nenhum aluno está vinculado à sua conta ainda. Procure a coordenação da escola para vincular.</p>
+  {% endif %}
+</div>
+{% endblock %}
