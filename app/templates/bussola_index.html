@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block titulo %}Bússola Vocacional — AIM.Edu{% endblock %}
+{% block conteudo %}
+<div class="card">
+  <h2>Bússola Vocacional</h2>
+  <p>Um questionário rápido de interesses (leva menos de 5 minutos) que, cruzado com seu desempenho nos diagnósticos, te ajuda a enxergar caminhos possíveis — não é uma resposta definitiva, é um ponto de partida.</p>
+  <a class="botao" href="{{ url_for('bussola_vocacional.iniciar') }}">
+    {{ 'Refazer questionário' if resultados else 'Começar agora' }}
+  </a>
+</div>
+
+{% if resultados %}
+<div class="card">
+  <h2>Meus resultados anteriores</h2>
+  <table>
+    <tr><th>Data</th><th>Maior afinidade</th><th></th></tr>
+    {% for r in resultados %}
+    <tr>
+      <td>{{ r['criado_em']|data }}</td>
+      <td>{{ r['perfil_top'] }}</td>
+      <td><a href="{{ url_for('bussola_vocacional.resultado', resposta_id=r['id']) }}">Ver resultado</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+{% endblock %}
