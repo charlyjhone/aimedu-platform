@@ -137,6 +137,32 @@ def run():
         else:
             print("Já existem dados — pulando criação de escola/usuários.")
 
+        # Bloco independente (adicionado depois do primeiro deploy): cria um usuário de
+        # família e vincula à aluna de demonstração. Roda mesmo que o bloco acima já
+        # tenha sido pulado — é o padrão que qualquer novo dado de demonstração deve
+        # seguir daqui pra frente, em vez de expandir o "if escolas count == 0" acima.
+        if db.execute("select count(*) c from usuarios where papel = 'familia'").fetchone()["c"] == 0:
+            aluno_usuario = db.execute(
+                "select id, escola_id from usuarios where email = 'aluno@escolaa.com.br'"
+            ).fetchone()
+            if aluno_usuario:
+                familia_uid = new_id()
+                db.execute(
+                    "insert into usuarios (id, escola_id, nome, email, senha_hash, papel) values (?,?,?,?,?,?)",
+                    (familia_uid, aluno_usuario["escola_id"], "Família de Ana Souza",
+                     "familia@escolaa.com.br", hash_senha("123456"), "familia"),
+                )
+                db.execute(
+                    "update alunos set responsavel_usuario_id = ? where usuario_id = ?",
+                    (familia_uid, aluno_usuario["id"]),
+                )
+                print("Usuário de família criado e vinculado à aluna de demonstração.")
+                print("  familia@escolaa.com.br / 123456")
+            else:
+                print("Aluno de demonstração não encontrado — pulando criação da família.")
+        else:
+            print("Usuário de família já existe — pulando.")
+
         if db.execute("select count(*) c from itens_banco").fetchone()["c"] == 0:
             import json
             for item in ITENS:
