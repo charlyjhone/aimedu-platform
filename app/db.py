@@ -141,6 +141,19 @@ create table if not exists bussola_respostas (
     resumo_ia text,
     criado_em text not null default (datetime('now'))
 );
+
+create table if not exists inclusao_cadastro (
+    id text primary key,
+    aluno_id text not null unique references alunos(id),
+    categoria text not null,
+    diagnostico_formal integer not null default 0,
+    adaptacoes text not null,
+    apoio_especializado text,
+    observacoes text,
+    criado_por_usuario_id text not null references usuarios(id),
+    criado_em text not null default (datetime('now')),
+    atualizado_em text not null default (datetime('now'))
+);
 """
 
 
