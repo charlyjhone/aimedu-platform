@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block titulo %}Gestão de Usuários — AIM.Edu{% endblock %}
+{% block conteudo %}
+<div class="card">
+  <h2>Gestão de Usuários</h2>
+  <p style="color:#666; font-size:0.85rem;">Crie contas, ative/desative, redefina senhas e importe alunos ou professores em lote por CSV.</p>
+  <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
+    <a class="botao" href="{{ url_for('gestao_usuarios.novo') }}">Criar usuário</a>
+    <a class="botao" href="{{ url_for('gestao_usuarios.importar_alunos') }}" style="background:#3a6b8a;">Importar alunos (CSV)</a>
+    <a class="botao" href="{{ url_for('gestao_usuarios.importar_professores') }}" style="background:#3a6b8a;">Importar professores (CSV)</a>
+  </div>
+</div>
+
+<div class="card">
+  {% if usuarios %}
+  <table>
+    <tr><th>Nome</th><th>E-mail</th><th>Papel</th><th>Situação</th><th></th></tr>
+    {% for u in usuarios %}
+    <tr>
+      <td>{{ u['nome'] }}</td>
+      <td>{{ u['email'] }}</td>
+      <td>{{ papeis_label.get(u['papel'], u['papel']) }}</td>
+      <td>{% if u['ativo'] %}<span style="color:var(--verde);">Ativo</span>{% else %}<span style="color:var(--vermelho);">Desativado</span>{% endif %}</td>
+      <td><a href="{{ url_for('gestao_usuarios.editar', usuario_id=u['id']) }}">Gerenciar</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>Nenhum usuário cadastrado ainda.</p>
+  {% endif %}
+</div>
+{% endblock %}
