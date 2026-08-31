@@ -61,5 +61,13 @@
   </div>
 {% endif %}
 
+{% if cadastro %}
+<div class="card">
+  <h2>PEI — Plano Educacional Individualizado</h2>
+  <p>Metas pedagógicas específicas e histórico de revisões periódicas para este aluno.</p>
+  <a class="botao" href="{{ url_for('inclusao.pei', aluno_id=aluno['id']) }}">Abrir PEI</a>
+</div>
+{% endif %}
+
 <a href="{{ url_for('inclusao.index') }}">&larr; Voltar</a>
 {% endblock %}
