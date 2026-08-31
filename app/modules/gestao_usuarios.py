@@ -4,16 +4,43 @@ lote.
 
 Regra de permissão adotada (mais simples do que permissões granulares por
 módulo, de propósito): continua tudo baseado no papel do usuário (aluno,
-professor, coordenador, direção, família) — o que muda aqui é que agora
-existe uma tela para coordenação/direção administrar essas contas, em vez
-de só o seed_data.py de demonstração. "Admin" não é um papel novo no banco:
-é a própria "direção", só chamada assim quando faz sentido na conversa.
+professor, coordenador, direção, família, psicopedagoga) — o que muda aqui
+é que agora existe uma tela para coordenação/direção administrar essas
+contas, em vez de só o seed_data.py de demonstração. "Admin" não é um papel
+novo no banco: é a própria "direção", só chamada assim quando faz sentido
+na conversa.
 
-Quem pode gerenciar quem: direção pode gerenciar qualquer papel. Coordenador
-só pode criar/editar aluno, professor e família — não pode criar nem editar
-outro coordenador nem uma conta de direção (evita que um coordenador se
-autopromova ou mexa em contas acima da sua própria). Isso é decidido em
-_pode_gerenciar_papel() e checado em toda rota que cria ou edita conta.
+Os níveis de acesso, na prática:
+- Direção ("admin"): acesso completo — cria e edita qualquer papel, e é a
+  única que pode excluir uma conta definitivamente (ver abaixo).
+- Coordenação: pode criar e editar aluno, professor, família e
+  psicopedagoga — não pode criar nem editar outro coordenador nem uma conta
+  de direção (evita que um coordenador se autopromova ou mexa em contas
+  acima da sua própria) — e NÃO tem acesso à exclusão definitiva de conta
+  nenhuma, só à ativação e desativação. Isso é decidido em
+  _pode_gerenciar_papel() e checado em toda rota que cria ou edita conta; a
+  exclusão é checada à parte, só para direção (ver excluir()).
+- Psicopedagoga: sem acesso a esta tela de gestão de usuários — o papel
+  existe para o módulo de Inclusão (app/modules/inclusao.py), onde ela é
+  quem edita o cadastro de inclusão e o PEI de qualquer aluno da escola
+  (mesmo nível de edição que coordenação/direção nesse módulo específico).
+  Aqui em Gestão de Usuários ela só usa a mesma rota self-service de todo
+  mundo, /usuarios/perfil.
+- Professor e aluno: não têm acesso a esta tela de gestão — só à rota
+  self-service /usuarios/perfil, onde qualquer pessoa logada edita o
+  próprio nome e troca a própria senha (informações básicas). Família,
+  psicopedagoga e coordenação/direção também usam essa mesma tela para o
+  próprio perfil.
+
+Exclusão definitiva x desativação: excluir() apaga a conta e a linha ligada
+a ela (alunos/professores) de vez — só a direção pode chamar essa rota, e
+mesmo assim só quando a conta não tem histórico vinculado (diagnóstico,
+redação, cadastro de inclusão, PEI, etc. — ver _bloqueios_exclusao()).
+Havendo qualquer histórico, a exclusão é bloqueada e a recomendação é
+desativar a conta em vez de excluir — dado acadêmico não deveria sumir do
+sistema por engano. Desativar (o checkbox "ativo" em salvar()) continua
+disponível para coordenação e direção, sem essa restrição, já que é
+reversível.
 
 O que NÃO dá pra fazer aqui, de propósito: trocar o papel de um usuário já
 existente (ex.: transformar um aluno em professor). O papel define quais
@@ -26,15 +53,16 @@ Cadastro em lote: upload de um arquivo CSV separado para alunos
 (nome,email,turma) e para professores (nome,email,disciplina,turmas — com
 múltiplas turmas separadas por ";"). Cada linha é processada de forma
 independente — uma linha com erro (e-mail duplicado, turma não encontrada)
-não derruba as outras, o resultado mostra o status linha a linha. Toda
-conta criada (individual ou em lote) recebe uma senha temporária aleatória,
-mostrada uma única vez logo após a criação — o sistema não guarda senha em
-texto puro em nenhum momento.
+não derruba as outras, o resultado mostra o status linha a linha. Cada tela
+de importação também oferece um modelo .csv em branco pra baixar, preencher
+e já subir de volta. Toda conta criada (individual ou em lote) recebe uma
+senha temporária aleatória, mostrada uma única vez logo após a criação — o
+sistema não guarda senha em texto puro em nenhum momento.
 """
 import csv
 import io
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, Response
 
 from ..db import get_db, new_id
 from ..auth import login_obrigatorio, usuario_logado, hash_senha
@@ -47,6 +75,7 @@ PAPEIS_LABEL = {
     "coordenador": "Coordenador",
     "direcao": "Direção (admin)",
     "familia": "Família",
+    "psicopedagoga": "Psicopedagoga",
 }
 
 
@@ -57,7 +86,7 @@ def _escola_id_atual():
 def _pode_gerenciar_papel(papel_ator: str, papel_alvo: str) -> bool:
     if papel_ator == "direcao":
         return True
-    return papel_alvo in ("aluno", "professor", "familia")
+    return papel_alvo in ("aluno", "professor", "familia", "psicopedagoga")
 
 
 def _pode_gerenciar_usuario(ator: dict, alvo) -> bool:
@@ -78,6 +107,49 @@ def _gerar_senha_temporaria(tamanho: int = 8) -> str:
 
     alfabeto = "".join(c for c in string.ascii_letters + string.digits if c not in "0O1lI")
     return "".join(secrets.choice(alfabeto) for _ in range(tamanho))
+
+
+def _bloqueios_exclusao(db, alvo):
+    """Verifica se a conta tem qualquer histórico vinculado a ela. Se tiver,
+    a exclusão definitiva é bloqueada — dado acadêmico não deveria sumir do
+    sistema por engano — e a recomendação é desativar a conta em vez de
+    excluir. Retorna a lista de motivos do bloqueio; lista vazia = pode
+    excluir."""
+    motivos = []
+    uid = alvo["id"]
+
+    if alvo["papel"] == "aluno":
+        aluno = db.execute("select id from alunos where usuario_id = ?", (uid,)).fetchone()
+        if aluno:
+            aluno_id = aluno["id"]
+            tabelas_aluno = [
+                ("diagnosticos", "diagnósticos"),
+                ("redacoes", "redações"),
+                ("alertas_radar", "alertas do radar"),
+                ("relatorios_familia", "relatórios para a família"),
+                ("bussola_respostas", "respostas da bússola vocacional"),
+                ("inclusao_cadastro", "cadastro de inclusão"),
+                ("pei_metas", "metas de PEI"),
+                ("pei_revisoes", "revisões de PEI"),
+            ]
+            for tabela, rotulo in tabelas_aluno:
+                if db.execute(f"select 1 from {tabela} where aluno_id = ?", (aluno_id,)).fetchone():
+                    motivos.append(rotulo)
+
+    if alvo["papel"] == "familia":
+        if db.execute("select 1 from alunos where responsavel_usuario_id = ?", (uid,)).fetchone():
+            motivos.append("vínculo como responsável de aluno(s) — desvincule antes de excluir")
+
+    tabelas_autoria = [
+        ("inclusao_cadastro", "cadastro(s) de inclusão criado(s) por essa conta"),
+        ("pei_metas", "meta(s) de PEI criada(s) por essa conta"),
+        ("pei_revisoes", "revisão/revisões de PEI criada(s) por essa conta"),
+    ]
+    for tabela, rotulo in tabelas_autoria:
+        if db.execute(f"select 1 from {tabela} where criado_por_usuario_id = ?", (uid,)).fetchone():
+            motivos.append(rotulo)
+
+    return motivos
 
 
 def _turmas_da_escola(db):
@@ -205,9 +277,12 @@ def editar(usuario_id):
                 ).fetchall()
             ]
 
+    pode_excluir = usuario_logado()["papel"] == "direcao" and alvo["id"] != usuario_logado()["id"]
+
     return render_template(
         "gestao_usuarios_editar.html", alvo=alvo, turmas=turmas, turma_atual_id=turma_atual_id,
         professor_row=professor_row, turmas_vinculadas=turmas_vinculadas, papeis_label=PAPEIS_LABEL,
+        pode_excluir=pode_excluir,
     )
 
 
@@ -270,6 +345,114 @@ def redefinir_senha(usuario_id):
         "credenciais",
     )
     return redirect(url_for("gestao_usuarios.editar", usuario_id=usuario_id))
+
+
+@bp.route("/<usuario_id>/excluir", methods=["POST"])
+@login_obrigatorio(papeis=["direcao"])
+def excluir(usuario_id):
+    db = get_db()
+    alvo = db.execute(
+        "select * from usuarios where id = ? and escola_id = ?", (usuario_id, _escola_id_atual())
+    ).fetchone()
+    if not alvo:
+        flash("Usuário não encontrado ou fora do seu acesso.", "erro")
+        return redirect(url_for("gestao_usuarios.index"))
+    if alvo["id"] == usuario_logado()["id"]:
+        flash("Você não pode excluir a própria conta.", "erro")
+        return redirect(url_for("gestao_usuarios.editar", usuario_id=usuario_id))
+
+    motivos = _bloqueios_exclusao(db, alvo)
+    if motivos:
+        flash(
+            f"Não é possível excluir {alvo['nome']} definitivamente — a conta tem histórico vinculado "
+            f"({', '.join(motivos)}). Desative a conta em vez de excluir.",
+            "erro",
+        )
+        return redirect(url_for("gestao_usuarios.editar", usuario_id=usuario_id))
+
+    if alvo["papel"] == "aluno":
+        db.execute("delete from alunos where usuario_id = ?", (usuario_id,))
+    elif alvo["papel"] == "professor":
+        professor = db.execute("select id from professores where usuario_id = ?", (usuario_id,)).fetchone()
+        if professor:
+            db.execute("delete from professor_turma where professor_id = ?", (professor["id"],))
+            db.execute("delete from professores where id = ?", (professor["id"],))
+
+    nome_excluido = alvo["nome"]
+    db.execute("delete from usuarios where id = ?", (usuario_id,))
+    db.commit()
+    flash(f"Usuário {nome_excluido} excluído definitivamente.", "ok")
+    return redirect(url_for("gestao_usuarios.index"))
+
+
+@bp.route("/perfil", methods=["GET", "POST"])
+@login_obrigatorio()
+def perfil():
+    """Autoatendimento: qualquer pessoa logada (aluno, professor,
+    coordenador, direção ou família) edita o próprio nome e troca a própria
+    senha aqui — sem precisar de acesso à tela de Gestão de Usuários."""
+    db = get_db()
+    uid = usuario_logado()["id"]
+    usuario = db.execute("select * from usuarios where id = ?", (uid,)).fetchone()
+
+    if request.method == "POST":
+        nome = request.form.get("nome", "").strip()
+        senha_atual = request.form.get("senha_atual", "")
+        nova_senha = request.form.get("nova_senha", "")
+        confirmar_senha = request.form.get("confirmar_senha", "")
+
+        if not nome:
+            flash("Informe seu nome.", "erro")
+            return redirect(url_for("gestao_usuarios.perfil"))
+
+        db.execute("update usuarios set nome = ? where id = ?", (nome, uid))
+
+        if senha_atual or nova_senha or confirmar_senha:
+            if usuario["senha_hash"] != hash_senha(senha_atual):
+                db.commit()
+                flash("Nome atualizado. A senha não foi alterada: a senha atual informada está incorreta.", "erro")
+                return redirect(url_for("gestao_usuarios.perfil"))
+            if len(nova_senha) < 4:
+                db.commit()
+                flash("Nome atualizado. A senha não foi alterada: a nova senha precisa ter pelo menos 4 caracteres.", "erro")
+                return redirect(url_for("gestao_usuarios.perfil"))
+            if nova_senha != confirmar_senha:
+                db.commit()
+                flash("Nome atualizado. A senha não foi alterada: a confirmação não bateu com a nova senha.", "erro")
+                return redirect(url_for("gestao_usuarios.perfil"))
+            db.execute("update usuarios set senha_hash = ? where id = ?", (hash_senha(nova_senha), uid))
+
+        db.commit()
+
+        sessao = session.get("usuario")
+        if sessao:
+            sessao["nome"] = nome
+            session["usuario"] = sessao
+
+        flash("Perfil atualizado.", "ok")
+        return redirect(url_for("gestao_usuarios.perfil"))
+
+    return render_template("gestao_usuarios_perfil.html", usuario=usuario)
+
+
+@bp.route("/importar/alunos/modelo.csv")
+@login_obrigatorio(papeis=["coordenador", "direcao"])
+def modelo_csv_alunos():
+    conteudo = "﻿nome,email,turma\n"
+    return Response(
+        conteudo, mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=modelo_importar_alunos.csv"},
+    )
+
+
+@bp.route("/importar/professores/modelo.csv")
+@login_obrigatorio(papeis=["coordenador", "direcao"])
+def modelo_csv_professores():
+    conteudo = "﻿nome,email,disciplina,turmas\n"
+    return Response(
+        conteudo, mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=modelo_importar_professores.csv"},
+    )
 
 
 @bp.route("/importar/alunos", methods=["GET", "POST"])
