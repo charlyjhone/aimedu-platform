@@ -8,6 +8,11 @@
 <body>
   <header class="topo">
     <a class="marca" href="{{ url_for('auth.painel') }}">AIM.Edu</a>
+    {% if session.get('usuario') and session['usuario']['papel'] in ('coordenador', 'direcao', 'professor', 'psicopedagoga') %}
+      <form class="busca-topo" method="get" action="{{ url_for('turmas.busca') }}">
+        <input type="text" name="q" value="{{ request.args.get('q', '') }}" placeholder="Buscar aluno por nome...">
+      </form>
+    {% endif %}
     {% if session.get('usuario') %}
       <div>
         <span style="margin-right:16px;">{{ session['usuario']['nome'] }} · {{ session['usuario']['papel']|capitalize }}</span>
