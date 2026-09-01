@@ -3,7 +3,7 @@ from flask import Flask
 
 from .db import init_db
 from . import auth
-from .modules import diagnostico, radar_coordenacao, bussola_vocacional, redacao, relatorios_familia, inclusao, gestao_usuarios, coordenador_professores
+from .modules import diagnostico, radar_coordenacao, bussola_vocacional, redacao, relatorios_familia, inclusao, gestao_usuarios, coordenador_professores, turmas
 from .ai_engine import NOMES_DISCIPLINA
 
 
@@ -39,4 +39,5 @@ def create_app():
     app.register_blueprint(inclusao.bp)
     app.register_blueprint(gestao_usuarios.bp)
     app.register_blueprint(coordenador_professores.bp)
+    app.register_blueprint(turmas.bp)
     return app
