@@ -21,6 +21,20 @@ def usuario_logado():
     return session.get("usuario")
 
 
+def escopo_etapa(usuario):
+    """Etapa (segmento) à qual um coordenador está restrito, ou None quando
+    não há restrição — direção e psicopedagoga sempre veem a escola inteira
+    (a própria regra de negócio pedida: 'a psicopedagoga continua com acesso
+    a todas as turmas e direção'), e um coordenador sem segmento definido
+    também não é restringido (compatibilidade com contas já existentes antes
+    deste recurso). Só um coordenador COM segmento salvo é filtrado.
+    Reaproveita os mesmos valores de series.etapa ('infantil'|'fund1'|'fund2'
+    |'medio') em vez de criar uma lista paralela."""
+    if not usuario or usuario.get("papel") != "coordenador":
+        return None
+    return usuario.get("segmento")
+
+
 def login_obrigatorio(papeis=None):
     def decorator(fn):
         @wraps(fn)
@@ -47,7 +61,10 @@ def login():
             if not row["ativo"]:
                 flash("Esta conta está desativada. Procure a coordenação da escola.", "erro")
                 return render_template("login.html")
-            session["usuario"] = {"id": row["id"], "nome": row["nome"], "papel": row["papel"], "escola_id": row["escola_id"]}
+            session["usuario"] = {
+                "id": row["id"], "nome": row["nome"], "papel": row["papel"],
+                "escola_id": row["escola_id"], "segmento": row["segmento"],
+            }
             return redirect(url_for("auth.painel"))
         flash("E-mail ou senha inválidos.", "erro")
     return render_template("login.html")
@@ -72,10 +89,28 @@ def painel():
         return render_template("dashboard_aluno.html", u=u, aluno=aluno, diagnosticos=diagnosticos)
     if u["papel"] in ("coordenador", "direcao"):
         from .modules.radar_coordenacao import _contagem_por_nivel
+        from .modules.gestao_usuarios import SEGMENTOS_LABEL
 
-        total_diag = db.execute("select count(*) c from diagnosticos").fetchone()["c"]
-        contagem = _contagem_por_nivel(db, u["escola_id"])
-        return render_template("dashboard_coordenacao.html", u=u, total_diag=total_diag, contagem=contagem)
+        segmento = escopo_etapa(u)
+        segmento_label = SEGMENTOS_LABEL.get(segmento) if segmento else None
+        if segmento:
+            total_diag = db.execute(
+                "select count(*) c from diagnosticos d join alunos a on a.id = d.aluno_id "
+                "join turmas t on t.id = a.turma_id join series s on s.id = t.serie_id "
+                "where s.escola_id = ? and s.etapa = ?",
+                (u["escola_id"], segmento),
+            ).fetchone()["c"]
+        else:
+            total_diag = db.execute(
+                "select count(*) c from diagnosticos d join alunos a on a.id = d.aluno_id "
+                "join turmas t on t.id = a.turma_id join series s on s.id = t.serie_id "
+                "where s.escola_id = ?",
+                (u["escola_id"],),
+            ).fetchone()["c"]
+        contagem = _contagem_por_nivel(db, u["escola_id"], segmento)
+        return render_template(
+            "dashboard_coordenacao.html", u=u, total_diag=total_diag, contagem=contagem, segmento_label=segmento_label
+        )
     if u["papel"] == "professor":
         return render_template("dashboard_professor.html", u=u)
     if u["papel"] == "psicopedagoga":
