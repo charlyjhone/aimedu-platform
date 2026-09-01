@@ -40,6 +40,18 @@ NOMES_COMPETENCIA_REDACAO = {
     "nota_c5": "proposta de intervenção (C5)",
 }
 
+# Rótulos de exibição para as disciplinas do Diagnóstico Adaptativo (o slug é
+# o que fica salvo em itens_banco.disciplina/diagnosticos.disciplina). Único
+# lugar do projeto onde essa lista existe — app/__init__.py usa isto no
+# filtro Jinja "disciplina" e app/modules/coordenador_professores.py usa para
+# rotular os blocos por disciplina. Adicionar uma disciplina nova ao
+# Diagnóstico Adaptativo é: cadastrar itens em itens_banco com um novo slug
+# e acrescentar o rótulo aqui — nenhuma rota nem template precisa mudar.
+NOMES_DISCIPLINA = {
+    "matematica": "Matemática",
+    "portugues": "Português",
+}
+
 
 def _gerar_llm(prompt: str) -> str:
     raise NotImplementedError(
@@ -251,9 +263,9 @@ def gerar_relatorio_familia(nome_aluno: str, diagnosticos: list, redacoes: list,
     if PROVEDOR_ATIVO == "llm":
         prompt = (
             f"Escreva um relatório periódico curto e acolhedor para a família de {nome_aluno}, "
-            f"em português, juntando: diagnósticos de matemática ({len(diagnosticos)} registrados), "
-            f"redações ({len(redacoes)} registradas), bússola vocacional ({bussola}), e "
-            f"{len(alertas_pendentes)} alerta(s) pendente(s) na coordenação."
+            f"em português, juntando: diagnósticos adaptativos ({len(diagnosticos)} registrados, em "
+            f"várias disciplinas possíveis), redações ({len(redacoes)} registradas), bússola vocacional "
+            f"({bussola}), e {len(alertas_pendentes)} alerta(s) pendente(s) na coordenação."
         )
         return _gerar_llm(prompt)
 
@@ -261,13 +273,22 @@ def gerar_relatorio_familia(nome_aluno: str, diagnosticos: list, redacoes: list,
 
     if diagnosticos:
         ultimo = diagnosticos[0]
+        nome_disc = NOMES_DISCIPLINA.get(ultimo["disciplina"], (ultimo["disciplina"] or "").capitalize())
         nivel = ultimo["nivel_final"]
-        trecho = f"No Diagnóstico Adaptativo de Matemática mais recente, o nível estimado foi {nivel:.1f}/5" if nivel is not None else "Há um diagnóstico de Matemática em andamento"
+        trecho = (
+            f"No Diagnóstico Adaptativo de {nome_disc} mais recente, o nível estimado foi {nivel:.1f}/5"
+            if nivel is not None else f"Há um diagnóstico de {nome_disc} em andamento"
+        )
         partes.append(trecho + ".")
         if len(diagnosticos) > 1:
-            partes.append(f"Ao todo, já foram realizados {len(diagnosticos)} diagnósticos de Matemática.")
+            disciplinas_distintas = sorted({d["disciplina"] for d in diagnosticos})
+            if len(disciplinas_distintas) > 1:
+                nomes = ", ".join(NOMES_DISCIPLINA.get(d, d.capitalize()) for d in disciplinas_distintas)
+                partes.append(f"Ao todo, já foram realizados {len(diagnosticos)} diagnósticos adaptativos, em: {nomes}.")
+            else:
+                partes.append(f"Ao todo, já foram realizados {len(diagnosticos)} diagnósticos de {nome_disc}.")
     else:
-        partes.append("Ainda não há diagnósticos de Matemática registrados.")
+        partes.append("Ainda não há diagnósticos adaptativos registrados.")
 
     if redacoes:
         ultima = redacoes[0]
@@ -298,20 +319,24 @@ def gerar_relatorio_familia(nome_aluno: str, diagnosticos: list, redacoes: list,
     return " ".join(partes)
 
 
-def resumo_desempenho_turma(nome_turma: str, total_alunos: int, alunos_com_diagnostico: int,
-                             media_nivel_diag, eixos_fracos: list, alunos_com_redacao: int,
-                             media_nota_redacao, competencias_fracas: list, alertas_pendentes: int) -> str:
+def resumo_desempenho_turma(nome_turma: str, total_alunos: int, diagnosticos_por_disciplina: dict,
+                             alunos_com_redacao: int, media_nota_redacao, competencias_fracas: list,
+                             alertas_pendentes: int) -> str:
     """Gera o texto de leitura do desempenho de uma turma inteira — usado pelo
-    professor (na própria turma) e pela coordenação/direção (em qualquer
-    turma). Cruza diagnóstico de matemática, redação e Radar pela mesma
-    lógica que os outros relatórios do AIM.Edu: são os dados que os outros
-    módulos já gravaram, lidos juntos aqui."""
+    professor (na própria turma, só na disciplina dele) e pela coordenação/
+    direção (em qualquer turma, com um bloco por disciplina). Cruza
+    Diagnóstico Adaptativo (de cada disciplina que já tem banco de itens),
+    Redação e Radar pela mesma lógica dos outros relatórios do AIM.Edu: são
+    os dados que os outros módulos já gravaram, lidos juntos aqui.
+
+    diagnosticos_por_disciplina: {slug_disciplina: {"alunos_com_diagnostico",
+    "media_nivel", "eixos_fracos"}} — um item por disciplina com Diagnóstico
+    Adaptativo relevante para quem está vendo a turma."""
     if PROVEDOR_ATIVO == "llm":
         prompt = (
-            f"Resuma o desempenho da turma {nome_turma!r} para o professor: {total_alunos} alunos, "
-            f"{alunos_com_diagnostico} já fizeram diagnóstico de matemática (nível médio {media_nivel_diag}), "
-            f"eixos mais fracos: {eixos_fracos}. {alunos_com_redacao} enviaram redação (nota média "
-            f"{media_nota_redacao}), competências mais fracas: {competencias_fracas}. "
+            f"Resuma o desempenho da turma {nome_turma!r}: {total_alunos} alunos. Diagnóstico Adaptativo "
+            f"por disciplina: {diagnosticos_por_disciplina}. {alunos_com_redacao} enviaram redação (nota "
+            f"média {media_nota_redacao}), competências mais fracas: {competencias_fracas}. "
             f"{alertas_pendentes} alerta(s) pendente(s) no Radar da Coordenação. "
             "Escreva um resumo curto e construtivo em português."
         )
@@ -319,16 +344,22 @@ def resumo_desempenho_turma(nome_turma: str, total_alunos: int, alunos_com_diagn
 
     partes = [f"Turma {nome_turma}: {total_alunos} aluno(s) cadastrado(s)."]
 
-    if alunos_com_diagnostico:
-        partes.append(
-            f"{alunos_com_diagnostico} de {total_alunos} já fizeram o Diagnóstico Adaptativo de Matemática, "
-            f"com nível médio estimado de {media_nivel_diag:.1f}/5."
-        )
-        if eixos_fracos:
-            eixos_txt = ", ".join(f"{eixo} ({round(taxa*100)}% de acerto)" for eixo, taxa in eixos_fracos)
-            partes.append(f"Os eixos da BNCC com mais dificuldade na turma são: {eixos_txt}.")
+    if diagnosticos_por_disciplina:
+        for slug, bloco in diagnosticos_por_disciplina.items():
+            nome_disc = NOMES_DISCIPLINA.get(slug, slug.capitalize())
+            if bloco["alunos_com_diagnostico"]:
+                trecho = (
+                    f"Em {nome_disc}, {bloco['alunos_com_diagnostico']} de {total_alunos} já fizeram o "
+                    f"Diagnóstico Adaptativo, com nível médio estimado de {bloco['media_nivel']:.1f}/5"
+                )
+                if bloco["eixos_fracos"]:
+                    eixos_txt = ", ".join(f"{eixo} ({round(taxa*100)}% de acerto)" for eixo, taxa in bloco["eixos_fracos"])
+                    trecho += f" — eixos da BNCC com mais dificuldade: {eixos_txt}"
+                partes.append(trecho + ".")
+            else:
+                partes.append(f"Em {nome_disc}, ainda ninguém na turma fez o Diagnóstico Adaptativo.")
     else:
-        partes.append("Ainda ninguém na turma fez o Diagnóstico Adaptativo de Matemática.")
+        partes.append("Ainda não há Diagnóstico Adaptativo disponível para nenhuma disciplina desta turma.")
 
     if alunos_com_redacao:
         partes.append(
@@ -350,144 +381,23 @@ def resumo_desempenho_turma(nome_turma: str, total_alunos: int, alunos_com_diagn
     return " ".join(partes)
 
 
-def sugestoes_pedagogicas_turma(eixos_fracos: list, competencias_fracas: list, alertas_pendentes: int) -> list:
+def sugestoes_pedagogicas_turma(diagnosticos_por_disciplina: dict, competencias_fracas: list, alertas_pendentes: int) -> list:
     """Gera uma lista curta de sugestões de ação para o professor, a partir
     dos mesmos dados do resumo acima — separado em função própria porque o
     professor pode querer só as ações, sem reler o diagnóstico inteiro."""
     if PROVEDOR_ATIVO == "llm":
         prompt = (
-            f"A partir dos eixos de matemática mais fracos {eixos_fracos} e das competências de redação "
-            f"mais fracas {competencias_fracas}, com {alertas_pendentes} alerta(s) pendente(s), sugira de "
-            "2 a 4 ações pedagógicas curtas e práticas em português, uma por linha."
+            f"A partir do Diagnóstico Adaptativo por disciplina {diagnosticos_por_disciplina} e das "
+            f"competências de redação mais fracas {competencias_fracas}, com {alertas_pendentes} "
+            "alerta(s) pendente(s), sugira de 2 a 4 ações pedagógicas curtas e práticas em português, "
+            "uma por linha."
         )
         return [_gerar_llm(prompt)]
 
     sugestoes = []
 
-    for eixo, taxa in eixos_fracos:
-        sugestoes.append(
-            f"Reforçar o eixo \"{eixo}\" com exercícios extras — a turma acerta apenas {round(taxa*100)}% "
-            "das questões desse eixo no Diagnóstico Adaptativo."
-        )
-
-    dicas_competencia = {
-        "domínio da norma culta (C1)": "Trabalhar revisão gramatical e reescrita de trechos com desvios de norma culta.",
-        "compreensão do tema (C2)": "Praticar leitura de propostas de redação e sublinhar as palavras-chave do tema antes de escrever.",
-        "organização e argumentação (C3)": "Reforçar a estrutura em 4-5 parágrafos (introdução, 2 de desenvolvimento, conclusão).",
-        "coesão e coerência, uso de conectivos (C4)": "Exercitar o uso de conectivos entre parágrafos (portanto, além disso, no entanto).",
-        "proposta de intervenção (C5)": "Treinar a conclusão com agente + ação concreta (quem deve agir e o que deve ser feito).",
-    }
-    for competencia in competencias_fracas:
-        if competencia in dicas_competencia:
-            sugestoes.append(dicas_competencia[competencia])
-
-    if alertas_pendentes:
-        sugestoes.append(
-            f"Revisar os {alertas_pendentes} alerta(s) pendente(s) desta turma no Radar da Coordenação — "
-            "priorizar contato com os alunos envolvidos."
-        )
-
-    if not sugestoes:
-        sugestoes.append(
-            "Ainda não há dados suficientes desta turma (diagnósticos, redações ou alertas) para gerar "
-            "sugestões — assim que os alunos usarem os módulos pedagógicos, as sugestões aparecem aqui."
-        )
-
-    return sugestoes
-
-
-FAQ_PROFESSOR = [
-    (("pei", "plano educacional individualizado"),
-     "O PEI (Plano Educacional Individualizado) é editado pela psicopedagoga, na ficha de Inclusão do aluno. "
-     "Você, como professor, pode consultar as metas e revisões do PEI na ficha do aluno, mas a edição é "
-     "exclusiva da psicopedagoga."),
-    (("inclusao", "inclusão", "adaptação", "adaptacao", "necessidade especial", "necessidade específica"),
-     "O cadastro de Inclusão (necessidades, adaptações e apoio especializado) fica na área \"Inclusão\", "
-     "acessível pelo seu painel. Professores podem consultar os dados de qualquer aluno das suas turmas, "
-     "mas quem edita é a psicopedagoga, a coordenação ou a direção."),
-    (("senha", "esqueci", "trocar senha", "redefinir"),
-     "Para trocar sua própria senha, use \"Meu perfil\" no topo da página. Se você esqueceu a senha e não "
-     "consegue entrar, peça para a coordenação redefinir pela tela de Gestão de Usuários."),
-    (("diagnostico", "diagnóstico", "matematica", "matemática"),
-     "O Diagnóstico Adaptativo de Matemática é feito pelo próprio aluno; o nível estimado e os eixos da "
-     "BNCC com mais dificuldade aparecem aqui no Coordenador de Professores por IA, na página da turma."),
-    (("redacao", "redação"),
-     "As redações são enviadas e corrigidas automaticamente (nota estimada nas 5 competências do ENEM) "
-     "quando o aluno envia pelo módulo de Redação. O resultado por turma aparece aqui, na página da turma."),
-    (("alerta", "radar"),
-     "Alertas de alunos que precisam de atenção aparecem no Radar da Coordenação. Professores podem "
-     "consultar; quem resolve ou reabre um alerta é a coordenação ou a direção."),
-    (("importar", "csv", "cadastro em lote", "cadastrar aluno", "cadastrar professor"),
-     "O cadastro em lote de alunos e professores por CSV é feito pela coordenação ou direção, na tela de "
-     "Gestão de Usuários — inclusive o download de um modelo em branco para preencher."),
-]
-
-RESPOSTA_PADRAO_DUVIDA = (
-    "Ainda não tenho uma resposta pronta para essa dúvida específica — isso hoje é respondido por regras "
-    "simples de palavras-chave, sem um modelo de linguagem por trás (ver aviso no topo de app/ai_engine.py). "
-    "Procure a coordenação da escola, ou tente reformular a pergunta usando palavras como \"PEI\", "
-    "\"inclusão\", \"diagnóstico\", \"redação\", \"alerta\" ou \"senha\"."
-)
-
-
-def responder_duvida_professor(pergunta: str) -> str:
-    """Responde a uma dúvida do professor sobre o próprio sistema AIM.Edu.
-    Hoje é um FAQ por palavras-chave (sem custo, sem depender de provedor
-    externo); o contrato é o mesmo dos outros textos deste arquivo, então
-    trocar para um LLM real no futuro não muda quem chama esta função."""
-    if PROVEDOR_ATIVO == "llm":
-        prompt = (
-            f"Um professor do AIM.Edu perguntou: {pergunta!r}. Responda em português, de forma curta e "
-            "objetiva, sobre como usar a plataforma. Se não souber, oriente a procurar a coordenação."
-        )
-        return _gerar_llm(prompt)
-
-    pergunta_lower = (pergunta or "").lower()
-    for palavras_chave, resposta in FAQ_PROFESSOR:
-        if any(p in pergunta_lower for p in palavras_chave):
-            return resposta
-    return RESPOSTA_PADRAO_DUVIDA
-
-
-def resumo_engajamento_professor(nome_professor: str, disciplina, turmas_info: list) -> str:
-    """Gera o texto do relatório da coordenação/direção sobre UM professor —
-    adesão ao sistema (não desempenho dos alunos em si): quantos alunos das
-    turmas dele já usaram cada módulo, e quantos alertas das turmas dele
-    seguem pendentes. turmas_info é uma lista de dicts por turma, cada um
-    com nome, total_alunos, alunos_com_diagnostico, alunos_com_redacao,
-    alertas_pendentes."""
-    if PROVEDOR_ATIVO == "llm":
-        prompt = (
-            f"Resuma para a coordenação a adesão do professor {nome_professor} ({disciplina}) às "
-            f"ferramentas do AIM.Edu, por turma: {turmas_info}. Português, curto, objetivo."
-        )
-        return _gerar_llm(prompt)
-
-    if not turmas_info:
-        return f"{nome_professor} ainda não está vinculado(a) a nenhuma turma."
-
-    total_alunos = sum(t["total_alunos"] for t in turmas_info)
-    total_diag = sum(t["alunos_com_diagnostico"] for t in turmas_info)
-    total_red = sum(t["alunos_com_redacao"] for t in turmas_info)
-    total_alertas = sum(t["alertas_pendentes"] for t in turmas_info)
-    nomes_turmas = ", ".join(t["nome"] for t in turmas_info)
-
-    partes = [
-        f"{nome_professor}" + (f" ({disciplina})" if disciplina else "")
-        + f" leciona em {len(turmas_info)} turma(s): {nomes_turmas}, somando {total_alunos} aluno(s)."
-    ]
-
-    if total_alunos:
-        pct_diag = round(100 * total_diag / total_alunos)
-        pct_red = round(100 * total_red / total_alunos)
-        partes.append(
-            f"{pct_diag}% dos alunos dessas turmas já fizeram o Diagnóstico de Matemática e {pct_red}% já "
-            "enviaram redação — um retrato do quanto os módulos pedagógicos estão em uso nessas turmas."
-        )
-
-    if total_alertas:
-        partes.append(f"Há {total_alertas} alerta(s) pendente(s) no Radar entre as turmas dele/dela.")
-    else:
-        partes.append("Não há alertas pendentes entre as turmas dele/dela no momento.")
-
-    return " ".join(partes)
+    for slug, bloco in diagnosticos_por_disciplina.items():
+        nome_disc = NOMES_DISCIPLINA.get(slug, slug.capitalize())
+        for eixo, taxa in bloco["eixos_fracos"]:
+            sugestoes.append(
+                f"Reforçar o eixo
