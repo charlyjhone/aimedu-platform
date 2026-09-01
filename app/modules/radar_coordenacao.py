@@ -21,7 +21,7 @@ a coordenação, sem precisar conhecer os outros módulos.
 from flask import Blueprint, render_template, redirect, url_for, request, flash
 
 from ..db import get_db
-from ..auth import login_obrigatorio, usuario_logado
+from ..auth import login_obrigatorio, usuario_logado, escopo_etapa
 
 bp = Blueprint("radar_coordenacao", __name__, url_prefix="/coordenacao/radar")
 
@@ -33,7 +33,14 @@ def _escola_id_atual():
     return usuario_logado()["escola_id"]
 
 
-def _turmas_da_escola(db, escola_id):
+def _turmas_da_escola(db, escola_id, segmento=None):
+    if segmento:
+        return db.execute(
+            "select t.id, t.nome from turmas t "
+            "join series s on s.id = t.serie_id "
+            "where s.escola_id = ? and s.etapa = ? order by t.nome",
+            (escola_id, segmento),
+        ).fetchall()
     return db.execute(
         "select t.id, t.nome from turmas t "
         "join series s on s.id = t.serie_id "
@@ -42,15 +49,29 @@ def _turmas_da_escola(db, escola_id):
     ).fetchall()
 
 
-def _contagem_por_nivel(db, escola_id):
-    linhas = db.execute(
-        "select a.nivel, count(*) c from alertas_radar a "
-        "join turmas t on t.id = a.turma_id "
-        "join series s on s.id = t.serie_id "
-        "where s.escola_id = ? and a.resolvido = false "
-        "group by a.nivel",
-        (escola_id,),
-    ).fetchall()
+def _contagem_por_nivel(db, escola_id, segmento=None):
+    """Usado tanto por este módulo quanto pelo painel de auth.painel() —
+    'segmento' é opcional de propósito: o painel de direção/psicopedagoga
+    chama sem segmento (vê tudo), e este módulo passa o segmento do
+    coordenador logado quando ele tiver um definido."""
+    if segmento:
+        linhas = db.execute(
+            "select a.nivel, count(*) c from alertas_radar a "
+            "join turmas t on t.id = a.turma_id "
+            "join series s on s.id = t.serie_id "
+            "where s.escola_id = ? and s.etapa = ? and a.resolvido = false "
+            "group by a.nivel",
+            (escola_id, segmento),
+        ).fetchall()
+    else:
+        linhas = db.execute(
+            "select a.nivel, count(*) c from alertas_radar a "
+            "join turmas t on t.id = a.turma_id "
+            "join series s on s.id = t.serie_id "
+            "where s.escola_id = ? and a.resolvido = false "
+            "group by a.nivel",
+            (escola_id,),
+        ).fetchall()
     contagem = {"alto": 0, "medio": 0, "baixo": 0}
     for linha in linhas:
         if linha["nivel"] in contagem:
@@ -63,6 +84,7 @@ def _contagem_por_nivel(db, escola_id):
 def index():
     db = get_db()
     escola_id = _escola_id_atual()
+    segmento = escopo_etapa(usuario_logado())
 
     turma_filtro = request.args.get("turma", "").strip()
     nivel_filtro = request.args.get("nivel", "").strip()
@@ -73,6 +95,9 @@ def index():
     condicoes = ["s.escola_id = ?"]
     params = [escola_id]
 
+    if segmento:
+        condicoes.append("s.etapa = ?")
+        params.append(segmento)
     if turma_filtro:
         condicoes.append("t.id = ?")
         params.append(turma_filtro)
@@ -102,8 +127,8 @@ def index():
     return render_template(
         "radar_coordenacao.html",
         alertas=alertas,
-        turmas=_turmas_da_escola(db, escola_id),
-        contagem=_contagem_por_nivel(db, escola_id),
+        turmas=_turmas_da_escola(db, escola_id, segmento),
+        contagem=_contagem_por_nivel(db, escola_id, segmento),
         turma_filtro=turma_filtro,
         nivel_filtro=nivel_filtro,
         status_filtro=status_filtro,
@@ -115,17 +140,28 @@ def index():
 def marcar(alerta_id):
     db = get_db()
     escola_id = _escola_id_atual()
+    segmento = escopo_etapa(usuario_logado())
     acao = request.form.get("acao")
     novo_valor = True if acao == "resolver" else False
 
-    # Confirma que o alerta pertence à mesma escola do coordenador antes de mexer.
-    alerta = db.execute(
-        "select a.id from alertas_radar a "
-        "join turmas t on t.id = a.turma_id "
-        "join series s on s.id = t.serie_id "
-        "where a.id = ? and s.escola_id = ?",
-        (alerta_id, escola_id),
-    ).fetchone()
+    # Confirma que o alerta pertence à mesma escola (e, se for coordenador
+    # escopado, ao mesmo segmento) antes de mexer.
+    if segmento:
+        alerta = db.execute(
+            "select a.id from alertas_radar a "
+            "join turmas t on t.id = a.turma_id "
+            "join series s on s.id = t.serie_id "
+            "where a.id = ? and s.escola_id = ? and s.etapa = ?",
+            (alerta_id, escola_id, segmento),
+        ).fetchone()
+    else:
+        alerta = db.execute(
+            "select a.id from alertas_radar a "
+            "join turmas t on t.id = a.turma_id "
+            "join series s on s.id = t.serie_id "
+            "where a.id = ? and s.escola_id = ?",
+            (alerta_id, escola_id),
+        ).fetchone()
     if not alerta:
         flash("Alerta não encontrado.", "erro")
     else:
@@ -146,16 +182,28 @@ def marcar(alerta_id):
 def aluno(aluno_id):
     db = get_db()
     escola_id = _escola_id_atual()
+    segmento = escopo_etapa(usuario_logado())
 
-    aluno_row = db.execute(
-        "select al.id, us.nome as nome, t.nome as turma_nome "
-        "from alunos al "
-        "join usuarios us on us.id = al.usuario_id "
-        "join turmas t on t.id = al.turma_id "
-        "join series s on s.id = t.serie_id "
-        "where al.id = ? and s.escola_id = ?",
-        (aluno_id, escola_id),
-    ).fetchone()
+    if segmento:
+        aluno_row = db.execute(
+            "select al.id, us.nome as nome, t.nome as turma_nome "
+            "from alunos al "
+            "join usuarios us on us.id = al.usuario_id "
+            "join turmas t on t.id = al.turma_id "
+            "join series s on s.id = t.serie_id "
+            "where al.id = ? and s.escola_id = ? and s.etapa = ?",
+            (aluno_id, escola_id, segmento),
+        ).fetchone()
+    else:
+        aluno_row = db.execute(
+            "select al.id, us.nome as nome, t.nome as turma_nome "
+            "from alunos al "
+            "join usuarios us on us.id = al.usuario_id "
+            "join turmas t on t.id = al.turma_id "
+            "join series s on s.id = t.serie_id "
+            "where al.id = ? and s.escola_id = ?",
+            (aluno_id, escola_id),
+        ).fetchone()
     if not aluno_row:
         flash("Aluno não encontrado.", "erro")
         return redirect(url_for("radar_coordenacao.index"))
