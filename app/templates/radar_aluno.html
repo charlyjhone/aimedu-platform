@@ -29,13 +29,13 @@
 
 <div class="card">
   <h2>Histórico de diagnósticos adaptativos</h2>
-  <p style="color:#666; font-size:0.85rem;">Estes dados vêm direto do módulo de Diagnóstico de Matemática — é o mesmo banco, sem integração à parte.</p>
+  <p style="color:#666; font-size:0.85rem;">Estes dados vêm direto do módulo de Diagnóstico Adaptativo — é o mesmo banco, sem integração à parte.</p>
   {% if diagnosticos %}
   <table>
     <tr><th>Disciplina</th><th>Iniciado em</th><th>Finalizado em</th><th>Nível final</th></tr>
     {% for d in diagnosticos %}
     <tr>
-      <td>{{ d['disciplina']|capitalize }}</td>
+      <td>{{ d['disciplina']|disciplina }}</td>
       <td>{{ d['iniciado_em']|data }}</td>
       <td>{{ d['finalizado_em']|data if d['finalizado_em'] else 'em andamento' }}</td>
       <td>{{ d['nivel_final']|round(1) if d['nivel_final'] is not none else '—' }}</td>
