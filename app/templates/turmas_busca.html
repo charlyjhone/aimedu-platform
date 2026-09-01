@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block titulo %}Buscar aluno — AIM.Edu{% endblock %}
+{% block conteudo %}
+<div class="card">
+  <h2>Buscar aluno</h2>
+  <form method="get" action="{{ url_for('turmas.busca') }}" style="display:flex; gap:10px;">
+    <input type="text" name="q" value="{{ q }}" placeholder="Nome do aluno..." style="flex:1; padding:10px; border:1px solid var(--borda); border-radius:6px; font-size:0.95rem;">
+    <button class="botao" type="submit">Buscar</button>
+  </form>
+</div>
+
+{% if q %}
+<div class="card">
+  {% if resultados %}
+  <table>
+    <tr><th>Nome</th><th>Turma</th><th></th></tr>
+    {% for item in resultados %}
+    <tr>
+      <td>{{ item.aluno['nome'] }}</td>
+      <td>{{ item.aluno['turma_nome'] }}</td>
+      <td>
+        {% for label, link in item.links %}
+        <a href="{{ link }}" style="margin-right:10px;">{{ label }}</a>
+        {% endfor %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>Nenhum aluno encontrado para "{{ q }}".</p>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}
