@@ -78,6 +78,32 @@ PAPEIS_LABEL = {
     "psicopedagoga": "Psicopedagoga",
 }
 
+# Lista fixa de disciplinas para o campo "Disciplina" do professor — antes era
+# texto livre (a coordenação digitava "Matemática", "matemática", "MATEMATICA"...
+# cada um do seu jeito), o que exigia normalizar acentos/caixa toda vez que o
+# valor precisava ser comparado com o slug do banco de itens (ver
+# app.modules.coordenador_professores._normalizar_disciplina, que continua
+# existindo e é usada do mesmo jeito — só que agora recebendo sempre um valor
+# desta lista, nunca mais um texto digitado à mão). Matemática e Português já
+# têm banco de itens no Diagnóstico Adaptativo (ver seed_data.py); as demais
+# disciplinas ficam prontas para quando um banco de itens for cadastrado para
+# elas — até lá, o professor aparece normalmente no sistema, só sem o bloco de
+# Diagnóstico Adaptativo no Coordenador de Professores.
+DISCIPLINAS_DISPONIVEIS = [
+    "Artes",
+    "Biologia",
+    "Educação Física",
+    "Filosofia",
+    "Física",
+    "Geografia",
+    "História",
+    "Inglês",
+    "Matemática",
+    "Português",
+    "Química",
+    "Sociologia",
+]
+
 
 def _escola_id_atual():
     return usuario_logado()["escola_id"]
@@ -204,12 +230,14 @@ def novo():
             erro = "Já existe um usuário com esse e-mail."
         elif papel == "aluno" and not turma_id:
             erro = "Selecione a turma do aluno."
+        elif papel == "professor" and disciplina and disciplina not in DISCIPLINAS_DISPONIVEIS:
+            erro = "Selecione a disciplina na lista."
 
         if erro:
             flash(erro, "erro")
             return render_template(
                 "gestao_usuarios_form.html", turmas=turmas, alunos_sem_familia=alunos_sem_familia,
-                papeis_disponiveis=papeis_disponiveis, form=request.form,
+                papeis_disponiveis=papeis_disponiveis, disciplinas=DISCIPLINAS_DISPONIVEIS, form=request.form,
             )
 
         senha_temp = _gerar_senha_temporaria()
@@ -243,7 +271,7 @@ def novo():
 
     return render_template(
         "gestao_usuarios_form.html", turmas=turmas, alunos_sem_familia=alunos_sem_familia,
-        papeis_disponiveis=papeis_disponiveis, form={},
+        papeis_disponiveis=papeis_disponiveis, disciplinas=DISCIPLINAS_DISPONIVEIS, form={},
     )
 
 
@@ -282,7 +310,7 @@ def editar(usuario_id):
     return render_template(
         "gestao_usuarios_editar.html", alvo=alvo, turmas=turmas, turma_atual_id=turma_atual_id,
         professor_row=professor_row, turmas_vinculadas=turmas_vinculadas, papeis_label=PAPEIS_LABEL,
-        pode_excluir=pode_excluir,
+        disciplinas=DISCIPLINAS_DISPONIVEIS, pode_excluir=pode_excluir,
     )
 
 
@@ -311,6 +339,9 @@ def salvar(usuario_id):
 
     if alvo["papel"] == "professor":
         disciplina = request.form.get("disciplina", "").strip()
+        if disciplina and disciplina not in DISCIPLINAS_DISPONIVEIS:
+            flash("Disciplina inválida — selecione uma opção da lista.", "erro")
+            return redirect(url_for("gestao_usuarios.editar", usuario_id=usuario_id))
         professor_row = db.execute("select id from professores where usuario_id = ?", (usuario_id,)).fetchone()
         if professor_row:
             db.execute("update professores set disciplina = ? where id = ?", (disciplina or None, professor_row["id"]))
