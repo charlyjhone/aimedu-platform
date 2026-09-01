@@ -26,8 +26,9 @@ mesma lógica de visibilidade por papel deste módulo, na rota /turmas/busca.
 """
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 
-from ..db import get_db
-from ..auth import login_obrigatorio, usuario_logado
+from ..db import get_db, new_id
+from ..auth import login_obrigatorio, usuario_logado, escopo_etapa
+from .gestao_usuarios import SEGMENTOS_DISPONIVEIS, SEGMENTOS_LABEL
 
 bp = Blueprint("turmas", __name__, url_prefix="/turmas")
 
@@ -51,13 +52,24 @@ def _turmas_do_professor(db, usuario_id):
 
 
 def _turmas_visiveis(db):
-    """Coordenação/direção/psicopedagoga veem todas as turmas da escola;
-    professor só as turmas em que dá aula — mesmo critério de
+    """Direção e psicopedagoga sempre veem todas as turmas da escola.
+    Coordenação vê todas, A NÃO SER que tenha um segmento (etapa) definido —
+    nesse caso só as turmas daquele segmento (ver escopo_etapa em app/auth.py).
+    Professor só as turmas em que dá aula — mesmo critério de
     app.modules.inclusao._alunos_visiveis, só que agrupado por turma."""
     u = usuario_logado()
     escola_id = _escola_id_atual()
 
     if u["papel"] in ("coordenador", "direcao", "psicopedagoga"):
+        segmento = escopo_etapa(u)
+        if segmento:
+            return db.execute(
+                "select t.id, t.nome, t.ano_letivo, s.nome as serie_nome, "
+                "(select count(*) from alunos a where a.turma_id = t.id) as total_alunos "
+                "from turmas t join series s on s.id = t.serie_id "
+                "where s.escola_id = ? and s.etapa = ? order by t.nome",
+                (escola_id, segmento),
+            ).fetchall()
         return db.execute(
             "select t.id, t.nome, t.ano_letivo, s.nome as serie_nome, "
             "(select count(*) from alunos a where a.turma_id = t.id) as total_alunos "
@@ -143,14 +155,25 @@ def busca():
     linhas = []
     if q:
         if u["papel"] in ("coordenador", "direcao", "psicopedagoga"):
-            linhas = db.execute(
-                "select al.id, al.usuario_id, us.nome as nome, t.nome as turma_nome "
-                "from alunos al join usuarios us on us.id = al.usuario_id "
-                "join turmas t on t.id = al.turma_id join series s on s.id = t.serie_id "
-                "where s.escola_id = ? and lower(us.nome) like lower(?) "
-                "order by us.nome",
-                (escola_id, f"%{q}%"),
-            ).fetchall()
+            segmento = escopo_etapa(u)
+            if segmento:
+                linhas = db.execute(
+                    "select al.id, al.usuario_id, us.nome as nome, t.nome as turma_nome "
+                    "from alunos al join usuarios us on us.id = al.usuario_id "
+                    "join turmas t on t.id = al.turma_id join series s on s.id = t.serie_id "
+                    "where s.escola_id = ? and s.etapa = ? and lower(us.nome) like lower(?) "
+                    "order by us.nome",
+                    (escola_id, segmento, f"%{q}%"),
+                ).fetchall()
+            else:
+                linhas = db.execute(
+                    "select al.id, al.usuario_id, us.nome as nome, t.nome as turma_nome "
+                    "from alunos al join usuarios us on us.id = al.usuario_id "
+                    "join turmas t on t.id = al.turma_id join series s on s.id = t.serie_id "
+                    "where s.escola_id = ? and lower(us.nome) like lower(?) "
+                    "order by us.nome",
+                    (escola_id, f"%{q}%"),
+                ).fetchall()
         else:
             turma_ids = _turmas_do_professor(db, u["id"])
             if turma_ids:
@@ -168,3 +191,258 @@ def busca():
         {"aluno": a, "links": _links_do_aluno(u["papel"], a["id"], a["usuario_id"])} for a in linhas
     ]
     return render_template("turmas_busca.html", q=q, resultados=resultados)
+
+
+# ---------------------------------------------------------------------------
+# Gestão de Turmas (estrutura de séries/turmas da escola) — só direção.
+#
+# Só a direção mexe na ESTRUTURA (criar/editar/excluir série e turma), de
+# propósito: uma coordenação já é escopada por segmento (ver escopo_etapa),
+# então criar turma é uma decisão que atravessa a escola inteira (ex.: mudar
+# quantas turmas o 6º ano tem afeta a organização da escola toda, não só o
+# segmento de uma coordenação). Isso não precisa de um seletor de escola — a
+# rota já opera só sobre a escola do usuário logado (_escola_id_atual()),
+# então funciona sem nenhuma mudança quando uma segunda escola existir: a
+# direção da Escola B logaria com sua própria conta e gerenciaria só as
+# turmas dela.
+# ---------------------------------------------------------------------------
+PAPEIS_GESTAO_TURMAS = ("direcao",)
+
+
+def _series_com_turmas(db, escola_id):
+    series = db.execute(
+        "select id, nome, etapa, ordem from series where escola_id = ? order by ordem, nome",
+        (escola_id,),
+    ).fetchall()
+    resultado = []
+    for s in series:
+        turmas_da_serie = db.execute(
+            "select t.id, t.nome, t.ano_letivo, "
+            "(select count(*) from alunos a where a.turma_id = t.id) as total_alunos "
+            "from turmas t where t.serie_id = ? order by t.nome",
+            (s["id"],),
+        ).fetchall()
+        resultado.append({"serie": s, "turmas": turmas_da_serie})
+    return resultado
+
+
+def _serie_pode_excluir(db, serie_id):
+    """Bloqueia a exclusão de uma série que ainda tem turma — evita apagar
+    por engano uma série cujas turmas (e, em cascata, os alunos delas)
+    dependem dela (ver 'on delete cascade' em schema_postgres.sql)."""
+    return db.execute("select 1 from turmas where serie_id = ?", (serie_id,)).fetchone() is None
+
+
+def _turma_pode_excluir(db, turma_id):
+    """Mesma lógica de segurança de _bloqueios_exclusao() em gestao_usuarios.py:
+    turma com aluno matriculado não pode ser excluída (o 'on delete cascade'
+    apagaria o(s) aluno(s) e todo o histórico pedagógico deles junto)."""
+    return db.execute("select 1 from alunos where turma_id = ?", (turma_id,)).fetchone() is None
+
+
+@bp.route("/gestao")
+@login_obrigatorio(papeis=PAPEIS_GESTAO_TURMAS)
+def gestao():
+    db = get_db()
+    grupos = _series_com_turmas(db, _escola_id_atual())
+    return render_template("turmas_gestao.html", grupos=grupos, segmentos_label=SEGMENTOS_LABEL)
+
+
+@bp.route("/gestao/serie/nova", methods=["GET", "POST"])
+@login_obrigatorio(papeis=PAPEIS_GESTAO_TURMAS)
+def nova_serie():
+    db = get_db()
+    escola_id = _escola_id_atual()
+
+    if request.method == "POST":
+        nome = request.form.get("nome", "").strip()
+        etapa = request.form.get("etapa", "")
+        ordem_bruta = request.form.get("ordem", "").strip()
+
+        erro = None
+        if not nome or etapa not in SEGMENTOS_LABEL:
+            erro = "Preencha o nome e selecione um segmento válido."
+        if not erro and ordem_bruta and not ordem_bruta.isdigit():
+            erro = "A ordem deve ser um número."
+
+        if erro:
+            flash(erro, "erro")
+            return render_template("turmas_gestao_serie_form.html", segmentos=SEGMENTOS_DISPONIVEIS, serie=None, form=request.form)
+
+        if ordem_bruta:
+            ordem = int(ordem_bruta)
+        else:
+            maior = db.execute("select coalesce(max(ordem), 0) m from series where escola_id = ?", (escola_id,)).fetchone()["m"]
+            ordem = maior + 1
+
+        db.execute(
+            "insert into series (id, escola_id, nome, etapa, ordem) values (?,?,?,?,?)",
+            (new_id(), escola_id, nome, etapa, ordem),
+        )
+        db.commit()
+        flash(f"Série {nome} criada.", "ok")
+        return redirect(url_for("turmas.gestao"))
+
+    return render_template("turmas_gestao_serie_form.html", segmentos=SEGMENTOS_DISPONIVEIS, serie=None, form={})
+
+
+@bp.route("/gestao/serie/<serie_id>/editar", methods=["GET", "POST"])
+@login_obrigatorio(papeis=PAPEIS_GESTAO_TURMAS)
+def editar_serie(serie_id):
+    db = get_db()
+    escola_id = _escola_id_atual()
+    serie = db.execute("select * from series where id = ? and escola_id = ?", (serie_id, escola_id)).fetchone()
+    if not serie:
+        flash("Série não encontrada.", "erro")
+        return redirect(url_for("turmas.gestao"))
+
+    if request.method == "POST":
+        nome = request.form.get("nome", "").strip()
+        etapa = request.form.get("etapa", "")
+        ordem_bruta = request.form.get("ordem", "").strip()
+
+        erro = None
+        if not nome or etapa not in SEGMENTOS_LABEL:
+            erro = "Preencha o nome e selecione um segmento válido."
+        if not erro and (not ordem_bruta or not ordem_bruta.isdigit()):
+            erro = "A ordem deve ser um número."
+
+        if erro:
+            flash(erro, "erro")
+            return render_template("turmas_gestao_serie_form.html", segmentos=SEGMENTOS_DISPONIVEIS, serie=serie, form=request.form)
+
+        db.execute(
+            "update series set nome = ?, etapa = ?, ordem = ? where id = ?",
+            (nome, etapa, int(ordem_bruta), serie_id),
+        )
+        db.commit()
+        flash(f"Série {nome} atualizada.", "ok")
+        return redirect(url_for("turmas.gestao"))
+
+    return render_template(
+        "turmas_gestao_serie_form.html", segmentos=SEGMENTOS_DISPONIVEIS, serie=serie,
+        form={"nome": serie["nome"], "etapa": serie["etapa"], "ordem": str(serie["ordem"])},
+    )
+
+
+@bp.route("/gestao/serie/<serie_id>/excluir", methods=["POST"])
+@login_obrigatorio(papeis=PAPEIS_GESTAO_TURMAS)
+def excluir_serie(serie_id):
+    db = get_db()
+    escola_id = _escola_id_atual()
+    serie = db.execute("select * from series where id = ? and escola_id = ?", (serie_id, escola_id)).fetchone()
+    if not serie:
+        flash("Série não encontrada.", "erro")
+    elif not _serie_pode_excluir(db, serie_id):
+        flash(f"Não é possível excluir {serie['nome']} — ela ainda tem turma(s) cadastrada(s). Exclua as turmas primeiro.", "erro")
+    else:
+        db.execute("delete from series where id = ?", (serie_id,))
+        db.commit()
+        flash(f"Série {serie['nome']} excluída.", "ok")
+    return redirect(url_for("turmas.gestao"))
+
+
+@bp.route("/gestao/turma/nova", methods=["GET", "POST"])
+@login_obrigatorio(papeis=PAPEIS_GESTAO_TURMAS)
+def nova_turma():
+    db = get_db()
+    escola_id = _escola_id_atual()
+    series = db.execute("select id, nome from series where escola_id = ? order by ordem, nome", (escola_id,)).fetchall()
+
+    if request.method == "POST":
+        serie_id = request.form.get("serie_id", "")
+        nome = request.form.get("nome", "").strip()
+        ano_letivo_bruto = request.form.get("ano_letivo", "").strip()
+
+        serie_valida = any(s["id"] == serie_id for s in series)
+        erro = None
+        if not serie_valida:
+            erro = "Selecione uma série válida."
+        elif not nome:
+            erro = "Informe o nome da turma."
+        elif not ano_letivo_bruto.isdigit():
+            erro = "O ano letivo deve ser um número (ex.: 2027)."
+
+        if erro:
+            flash(erro, "erro")
+            return render_template("turmas_gestao_turma_form.html", series=series, turma=None, form=request.form)
+
+        db.execute(
+            "insert into turmas (id, serie_id, nome, ano_letivo) values (?,?,?,?)",
+            (new_id(), serie_id, nome, int(ano_letivo_bruto)),
+        )
+        db.commit()
+        flash(f"Turma {nome} criada.", "ok")
+        return redirect(url_for("turmas.gestao"))
+
+    return render_template(
+        "turmas_gestao_turma_form.html", series=series, turma=None,
+        form={"ano_letivo": "2027"},
+    )
+
+
+@bp.route("/gestao/turma/<turma_id>/editar", methods=["GET", "POST"])
+@login_obrigatorio(papeis=PAPEIS_GESTAO_TURMAS)
+def editar_turma(turma_id):
+    db = get_db()
+    escola_id = _escola_id_atual()
+    turma = db.execute(
+        "select t.* from turmas t join series s on s.id = t.serie_id where t.id = ? and s.escola_id = ?",
+        (turma_id, escola_id),
+    ).fetchone()
+    if not turma:
+        flash("Turma não encontrada.", "erro")
+        return redirect(url_for("turmas.gestao"))
+    series = db.execute("select id, nome from series where escola_id = ? order by ordem, nome", (escola_id,)).fetchall()
+
+    if request.method == "POST":
+        serie_id = request.form.get("serie_id", "")
+        nome = request.form.get("nome", "").strip()
+        ano_letivo_bruto = request.form.get("ano_letivo", "").strip()
+
+        serie_valida = any(s["id"] == serie_id for s in series)
+        erro = None
+        if not serie_valida:
+            erro = "Selecione uma série válida."
+        elif not nome:
+            erro = "Informe o nome da turma."
+        elif not ano_letivo_bruto.isdigit():
+            erro = "O ano letivo deve ser um número (ex.: 2027)."
+
+        if erro:
+            flash(erro, "erro")
+            return render_template("turmas_gestao_turma_form.html", series=series, turma=turma, form=request.form)
+
+        db.execute(
+            "update turmas set serie_id = ?, nome = ?, ano_letivo = ? where id = ?",
+            (serie_id, nome, int(ano_letivo_bruto), turma_id),
+        )
+        db.commit()
+        flash(f"Turma {nome} atualizada.", "ok")
+        return redirect(url_for("turmas.gestao"))
+
+    return render_template(
+        "turmas_gestao_turma_form.html", series=series, turma=turma,
+        form={"serie_id": turma["serie_id"], "nome": turma["nome"], "ano_letivo": str(turma["ano_letivo"])},
+    )
+
+
+@bp.route("/gestao/turma/<turma_id>/excluir", methods=["POST"])
+@login_obrigatorio(papeis=PAPEIS_GESTAO_TURMAS)
+def excluir_turma(turma_id):
+    db = get_db()
+    escola_id = _escola_id_atual()
+    turma = db.execute(
+        "select t.* from turmas t join series s on s.id = t.serie_id where t.id = ? and s.escola_id = ?",
+        (turma_id, escola_id),
+    ).fetchone()
+    if not turma:
+        flash("Turma não encontrada.", "erro")
+    elif not _turma_pode_excluir(db, turma_id):
+        flash(f"Não é possível excluir {turma['nome']} — ela ainda tem aluno(s) matriculado(s). Transfira-os para outra turma primeiro.", "erro")
+    else:
+        db.execute("delete from professor_turma where turma_id = ?", (turma_id,))
+        db.execute("delete from turmas where id = ?", (turma_id,))
+        db.commit()
+        flash(f"Turma {turma['nome']} excluída.", "ok")
+    return redirect(url_for("turmas.gestao"))
