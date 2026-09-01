@@ -7,13 +7,14 @@ sem filtro nem histórico. Este módulo adiciona:
   - Contadores por nível, para a coordenação priorizar de olho rápido.
   - Ação de marcar um alerta como resolvido (e reabrir, se for engano).
   - Uma página por aluno que junta, num só lugar, os alertas dele E o
-    histórico de diagnósticos adaptativos — a prova visual de que o Radar
-    "conversa" com o módulo de Diagnóstico de Matemática pelo mesmo banco,
-    sem nenhuma integração especial entre os dois: é tudo uma coisa só.
+    histórico de diagnósticos adaptativos (de qualquer disciplina) — a prova
+    visual de que o Radar "conversa" com o módulo de Diagnóstico Adaptativo
+    pelo mesmo banco, sem nenhuma integração especial entre os dois: é tudo
+    uma coisa só.
 
 Este módulo é só de leitura/gestão de alertas — quem CRIA um alerta continua
-sendo cada módulo pedagógico (hoje só o diagnóstico de matemática), inserindo
-direto na tabela alertas_radar. Isso é proposital: o Radar é o painel comum
+sendo cada módulo pedagógico (hoje o Diagnóstico Adaptativo e a Redação),
+inserindo direto na tabela alertas_radar. Isso é proposital: o Radar é o painel comum
 por onde qualquer módulo futuro (redação, bússola, inclusão etc.) pode avisar
 a coordenação, sem precisar conhecer os outros módulos.
 """
