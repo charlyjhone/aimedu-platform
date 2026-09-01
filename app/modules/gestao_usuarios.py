@@ -65,7 +65,7 @@ import io
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, Response
 
 from ..db import get_db, new_id
-from ..auth import login_obrigatorio, usuario_logado, hash_senha
+from ..auth import login_obrigatorio, usuario_logado, hash_senha, escopo_etapa
 
 bp = Blueprint("gestao_usuarios", __name__, url_prefix="/usuarios")
 
@@ -104,6 +104,20 @@ DISCIPLINAS_DISPONIVEIS = [
     "Sociologia",
 ]
 
+# Segmentos que um coordenador pode ter (campo usuarios.segmento) — reaproveita
+# os mesmos slugs de series.etapa, na mesma ordem pedagógica, em vez de criar
+# uma lista paralela. Só a direção pode definir/trocar o segmento de um
+# coordenador (ver _pode_gerenciar_papel: coordenador não gerencia coordenador).
+# Um coordenador sem segmento definido continua vendo a escola inteira —
+# é o que preserva o comportamento de contas já existentes antes deste campo.
+SEGMENTOS_DISPONIVEIS = [
+    ("infantil", "Educação Infantil"),
+    ("fund1", "Fundamental I (Anos Iniciais)"),
+    ("fund2", "Fundamental II (Anos Finais)"),
+    ("medio", "Ensino Médio"),
+]
+SEGMENTOS_LABEL = dict(SEGMENTOS_DISPONIVEIS)
+
 
 def _escola_id_atual():
     return usuario_logado()["escola_id"]
@@ -115,16 +129,68 @@ def _pode_gerenciar_papel(papel_ator: str, papel_alvo: str) -> bool:
     return papel_alvo in ("aluno", "professor", "familia", "psicopedagoga")
 
 
-def _pode_gerenciar_usuario(ator: dict, alvo) -> bool:
+def _turma_no_segmento(db, turma_id, segmento):
+    if not segmento or not turma_id:
+        return not segmento
+    return db.execute(
+        "select 1 from turmas t join series s on s.id = t.serie_id where t.id = ? and s.etapa = ?",
+        (turma_id, segmento),
+    ).fetchone() is not None
+
+
+def _professor_tem_turma_no_segmento(db, professor_id, segmento):
+    return db.execute(
+        "select 1 from professor_turma pt join turmas t on t.id = pt.turma_id "
+        "join series s on s.id = t.serie_id where pt.professor_id = ? and s.etapa = ?",
+        (professor_id, segmento),
+    ).fetchone() is not None
+
+
+def _familia_tem_aluno_no_segmento(db, familia_usuario_id, segmento):
+    return db.execute(
+        "select 1 from alunos al join turmas t on t.id = al.turma_id "
+        "join series s on s.id = t.serie_id where al.responsavel_usuario_id = ? and s.etapa = ?",
+        (familia_usuario_id, segmento),
+    ).fetchone() is not None
+
+
+def _usuario_no_escopo(db, ator: dict, alvo) -> bool:
+    """Um coordenador com segmento definido só enxerga/gerencia aluno,
+    professor e família ligados ao próprio segmento (etapa) — direção e
+    coordenador sem segmento não são restringidos por esta função. Um aluno
+    ou professor sem vínculo de turma ainda visível (caso raro) fica de fora
+    do escopo, por segurança (nega por padrão)."""
+    segmento = escopo_etapa(ator)
+    if not segmento or not alvo:
+        return True
+    if alvo["papel"] == "aluno":
+        aluno = db.execute("select turma_id from alunos where usuario_id = ?", (alvo["id"],)).fetchone()
+        return bool(aluno) and _turma_no_segmento(db, aluno["turma_id"], segmento)
+    if alvo["papel"] == "professor":
+        professor = db.execute("select id from professores where usuario_id = ?", (alvo["id"],)).fetchone()
+        return bool(professor) and _professor_tem_turma_no_segmento(db, professor["id"], segmento)
+    if alvo["papel"] == "familia":
+        return _familia_tem_aluno_no_segmento(db, alvo["id"], segmento)
+    return True
+
+
+def _pode_gerenciar_usuario(ator: dict, alvo, db=None) -> bool:
     """Além da regra por papel, todo usuário pode sempre gerenciar a própria
     conta (ex.: redefinir a própria senha) — sem isso, um coordenador
     ficaria travado para mexer no próprio cadastro, já que coordenador não
-    pode gerenciar papel 'coordenador' de terceiros."""
+    pode gerenciar papel 'coordenador' de terceiros. Quando db é informado,
+    também aplica o escopo por segmento (_usuario_no_escopo) — passar db
+    sempre que possível; sem ele, a checagem de segmento é pulada (usado só
+    onde o escopo já foi resolvido de outra forma)."""
     if not alvo:
         return False
     if alvo["id"] == ator["id"]:
         return True
-    return _pode_gerenciar_papel(ator["papel"], alvo["papel"])
+    if not _pode_gerenciar_papel(ator["papel"], alvo["papel"]):
+        return False
+    if db is not None and not _usuario_no_escopo(db, ator, alvo):
+        return False
+    return True
 
 
 def _gerar_senha_temporaria(tamanho: int = 8) -> str:
@@ -178,7 +244,17 @@ def _bloqueios_exclusao(db, alvo):
     return motivos
 
 
-def _turmas_da_escola(db):
+def _turmas_da_escola(db, segmento=None):
+    """Turmas da escola — quando 'segmento' é informado (coordenador
+    escopado), só as turmas da etapa correspondente, para que ela nem veja a
+    opção de matricular um aluno ou vincular um professor fora do seu
+    segmento."""
+    if segmento:
+        return db.execute(
+            "select t.id, t.nome from turmas t join series s on s.id = t.serie_id "
+            "where s.escola_id = ? and s.etapa = ? order by t.nome",
+            (_escola_id_atual(), segmento),
+        ).fetchall()
     return db.execute(
         "select t.id, t.nome from turmas t join series s on s.id = t.serie_id "
         "where s.escola_id = ? order by t.nome",
@@ -186,14 +262,48 @@ def _turmas_da_escola(db):
     ).fetchall()
 
 
+def _usuarios_visiveis(db):
+    """Lista de usuários da escola pra tela de Gestão de Usuários — direção,
+    e coordenador sem segmento definido, veem todo mundo. Um coordenador COM
+    segmento só vê aluno/professor/família ligados ao próprio segmento
+    (etapa) — outras contas de coordenador/direção/psicopedagoga ficam fora
+    da lista dela, já que ela nunca poderia gerenciá-las mesmo (ver
+    _pode_gerenciar_papel)."""
+    escola_id = _escola_id_atual()
+    segmento = escopo_etapa(usuario_logado())
+    if not segmento:
+        return db.execute(
+            "select * from usuarios where escola_id = ? order by papel, nome", (escola_id,)
+        ).fetchall()
+    return db.execute(
+        "select distinct us.* from usuarios us "
+        "left join alunos al on al.usuario_id = us.id "
+        "left join turmas t_al on t_al.id = al.turma_id "
+        "left join series s_al on s_al.id = t_al.serie_id "
+        "left join professores p on p.usuario_id = us.id "
+        "left join professor_turma pt on pt.professor_id = p.id "
+        "left join turmas t_pt on t_pt.id = pt.turma_id "
+        "left join series s_pt on s_pt.id = t_pt.serie_id "
+        "left join alunos al_resp on al_resp.responsavel_usuario_id = us.id "
+        "left join turmas t_resp on t_resp.id = al_resp.turma_id "
+        "left join series s_resp on s_resp.id = t_resp.serie_id "
+        "where us.escola_id = ? and ("
+        "(us.papel = 'aluno' and s_al.etapa = ?) or "
+        "(us.papel = 'professor' and s_pt.etapa = ?) or "
+        "(us.papel = 'familia' and s_resp.etapa = ?)"
+        ") order by us.papel, us.nome",
+        (escola_id, segmento, segmento, segmento),
+    ).fetchall()
+
+
 @bp.route("/")
 @login_obrigatorio(papeis=["coordenador", "direcao"])
 def index():
     db = get_db()
-    usuarios = db.execute(
-        "select * from usuarios where escola_id = ? order by papel, nome", (_escola_id_atual(),)
-    ).fetchall()
-    return render_template("gestao_usuarios_index.html", usuarios=usuarios, papeis_label=PAPEIS_LABEL)
+    usuarios = _usuarios_visiveis(db)
+    return render_template(
+        "gestao_usuarios_index.html", usuarios=usuarios, papeis_label=PAPEIS_LABEL, segmentos_label=SEGMENTOS_LABEL
+    )
 
 
 @bp.route("/novo", methods=["GET", "POST"])
@@ -201,15 +311,25 @@ def index():
 def novo():
     db = get_db()
     escola_id = _escola_id_atual()
-    papel_ator = usuario_logado()["papel"]
+    ator = usuario_logado()
+    papel_ator = ator["papel"]
+    segmento_ator = escopo_etapa(ator)
+    pode_definir_segmento = papel_ator == "direcao"
     papeis_disponiveis = {p: rotulo for p, rotulo in PAPEIS_LABEL.items() if _pode_gerenciar_papel(papel_ator, p)}
-    turmas = _turmas_da_escola(db)
-    alunos_sem_familia = db.execute(
+    turmas = _turmas_da_escola(db, segmento_ator)
+    turma_ids_permitidos = {t["id"] for t in turmas}
+    alunos_sem_familia_query = (
         "select al.id, us.nome as nome from alunos al "
         "join usuarios us on us.id = al.usuario_id "
         "join turmas t on t.id = al.turma_id join series s on s.id = t.serie_id "
-        "where s.escola_id = ? and al.responsavel_usuario_id is null order by us.nome",
-        (escola_id,),
+        "where s.escola_id = ? and al.responsavel_usuario_id is null "
+    )
+    params_af = [escola_id]
+    if segmento_ator:
+        alunos_sem_familia_query += "and s.etapa = ? "
+        params_af.append(segmento_ator)
+    alunos_sem_familia = db.execute(
+        alunos_sem_familia_query + "order by us.nome", tuple(params_af)
     ).fetchall()
 
     if request.method == "POST":
@@ -218,8 +338,9 @@ def novo():
         papel = request.form.get("papel", "")
         turma_id = request.form.get("turma_id") or None
         disciplina = request.form.get("disciplina", "").strip()
-        turmas_professor = request.form.getlist("turmas_professor")
+        turmas_professor = [t for t in request.form.getlist("turmas_professor") if t in turma_ids_permitidos]
         aluno_vinculado_id = request.form.get("aluno_vinculado_id") or None
+        segmento_novo = request.form.get("segmento") or None
 
         erro = None
         if not nome or not email or papel not in PAPEIS_LABEL:
@@ -230,21 +351,28 @@ def novo():
             erro = "Já existe um usuário com esse e-mail."
         elif papel == "aluno" and not turma_id:
             erro = "Selecione a turma do aluno."
+        elif papel == "aluno" and turma_id not in turma_ids_permitidos:
+            erro = "Turma inválida ou fora do seu segmento."
         elif papel == "professor" and disciplina and disciplina not in DISCIPLINAS_DISPONIVEIS:
             erro = "Selecione a disciplina na lista."
+        elif papel == "coordenador" and segmento_novo and segmento_novo not in SEGMENTOS_LABEL:
+            erro = "Segmento inválido — selecione uma opção da lista."
 
         if erro:
             flash(erro, "erro")
             return render_template(
                 "gestao_usuarios_form.html", turmas=turmas, alunos_sem_familia=alunos_sem_familia,
-                papeis_disponiveis=papeis_disponiveis, disciplinas=DISCIPLINAS_DISPONIVEIS, form=request.form,
+                papeis_disponiveis=papeis_disponiveis, disciplinas=DISCIPLINAS_DISPONIVEIS,
+                segmentos=SEGMENTOS_DISPONIVEIS, pode_definir_segmento=pode_definir_segmento, form=request.form,
             )
 
         senha_temp = _gerar_senha_temporaria()
         uid = new_id()
+        segmento_salvo = segmento_novo if (papel == "coordenador" and pode_definir_segmento) else None
         db.execute(
-            "insert into usuarios (id, escola_id, nome, email, senha_hash, papel, ativo) values (?,?,?,?,?,?,?)",
-            (uid, escola_id, nome, email, hash_senha(senha_temp), papel, True),
+            "insert into usuarios (id, escola_id, nome, email, senha_hash, papel, ativo, segmento) "
+            "values (?,?,?,?,?,?,?,?)",
+            (uid, escola_id, nome, email, hash_senha(senha_temp), papel, True, segmento_salvo),
         )
         if papel == "aluno":
             db.execute("insert into alunos (id, usuario_id, turma_id) values (?,?,?)", (new_id(), uid, turma_id))
@@ -271,7 +399,8 @@ def novo():
 
     return render_template(
         "gestao_usuarios_form.html", turmas=turmas, alunos_sem_familia=alunos_sem_familia,
-        papeis_disponiveis=papeis_disponiveis, disciplinas=DISCIPLINAS_DISPONIVEIS, form={},
+        papeis_disponiveis=papeis_disponiveis, disciplinas=DISCIPLINAS_DISPONIVEIS,
+        segmentos=SEGMENTOS_DISPONIVEIS, pode_definir_segmento=pode_definir_segmento, form={},
     )
 
 
@@ -279,14 +408,16 @@ def novo():
 @login_obrigatorio(papeis=["coordenador", "direcao"])
 def editar(usuario_id):
     db = get_db()
+    ator = usuario_logado()
     alvo = db.execute(
         "select * from usuarios where id = ? and escola_id = ?", (usuario_id, _escola_id_atual())
     ).fetchone()
-    if not _pode_gerenciar_usuario(usuario_logado(), alvo):
+    if not _pode_gerenciar_usuario(ator, alvo, db):
         flash("Usuário não encontrado ou fora do seu acesso.", "erro")
         return redirect(url_for("gestao_usuarios.index"))
 
-    turmas = _turmas_da_escola(db)
+    segmento_ator = escopo_etapa(ator)
+    turmas = _turmas_da_escola(db, segmento_ator)
     turma_atual_id = None
     professor_row = None
     turmas_vinculadas = []
@@ -305,12 +436,14 @@ def editar(usuario_id):
                 ).fetchall()
             ]
 
-    pode_excluir = usuario_logado()["papel"] == "direcao" and alvo["id"] != usuario_logado()["id"]
+    pode_excluir = ator["papel"] == "direcao" and alvo["id"] != ator["id"]
+    pode_definir_segmento = ator["papel"] == "direcao" and alvo["papel"] == "coordenador"
 
     return render_template(
         "gestao_usuarios_editar.html", alvo=alvo, turmas=turmas, turma_atual_id=turma_atual_id,
         professor_row=professor_row, turmas_vinculadas=turmas_vinculadas, papeis_label=PAPEIS_LABEL,
         disciplinas=DISCIPLINAS_DISPONIVEIS, pode_excluir=pode_excluir,
+        segmentos=SEGMENTOS_DISPONIVEIS, pode_definir_segmento=pode_definir_segmento,
     )
 
 
@@ -318,23 +451,34 @@ def editar(usuario_id):
 @login_obrigatorio(papeis=["coordenador", "direcao"])
 def salvar(usuario_id):
     db = get_db()
+    ator = usuario_logado()
     alvo = db.execute(
         "select * from usuarios where id = ? and escola_id = ?", (usuario_id, _escola_id_atual())
     ).fetchone()
-    if not _pode_gerenciar_usuario(usuario_logado(), alvo):
+    if not _pode_gerenciar_usuario(ator, alvo, db):
         flash("Usuário não encontrado ou fora do seu acesso.", "erro")
         return redirect(url_for("gestao_usuarios.index"))
 
+    segmento_ator = escopo_etapa(ator)
+    turma_ids_permitidos = {t["id"] for t in _turmas_da_escola(db, segmento_ator)}
+
     ativo = True if request.form.get("ativo") == "on" else False
-    if alvo["id"] == usuario_logado()["id"] and not ativo:
+    if alvo["id"] == ator["id"] and not ativo:
         flash("Você não pode desativar sua própria conta.", "erro")
         return redirect(url_for("gestao_usuarios.editar", usuario_id=usuario_id))
 
     db.execute("update usuarios set ativo = ? where id = ?", (ativo, usuario_id))
 
+    if alvo["papel"] == "coordenador" and ator["papel"] == "direcao":
+        segmento_novo = request.form.get("segmento") or None
+        if segmento_novo and segmento_novo not in SEGMENTOS_LABEL:
+            flash("Segmento inválido — selecione uma opção da lista.", "erro")
+            return redirect(url_for("gestao_usuarios.editar", usuario_id=usuario_id))
+        db.execute("update usuarios set segmento = ? where id = ?", (segmento_novo, usuario_id))
+
     if alvo["papel"] == "aluno":
         turma_id = request.form.get("turma_id")
-        if turma_id:
+        if turma_id and turma_id in turma_ids_permitidos:
             db.execute("update alunos set turma_id = ? where usuario_id = ?", (turma_id, usuario_id))
 
     if alvo["papel"] == "professor":
@@ -345,8 +489,20 @@ def salvar(usuario_id):
         professor_row = db.execute("select id from professores where usuario_id = ?", (usuario_id,)).fetchone()
         if professor_row:
             db.execute("update professores set disciplina = ? where id = ?", (disciplina or None, professor_row["id"]))
-            db.execute("delete from professor_turma where professor_id = ?", (professor_row["id"],))
-            for turma_id_prof in request.form.getlist("turmas_professor"):
+            # Quando quem salva é um coordenador escopado, só mexe nos vínculos
+            # do próprio segmento — as turmas de outros segmentos que esse
+            # professor já lecionava (cuidadas por outra coordenação) ficam
+            # intactas, em vez de apagar tudo e recriar só com o que veio no form.
+            turmas_form = [t for t in request.form.getlist("turmas_professor") if t in turma_ids_permitidos]
+            if segmento_ator:
+                db.execute(
+                    "delete from professor_turma where professor_id = ? and turma_id in ("
+                    "select t.id from turmas t join series s on s.id = t.serie_id where s.etapa = ?)",
+                    (professor_row["id"], segmento_ator),
+                )
+            else:
+                db.execute("delete from professor_turma where professor_id = ?", (professor_row["id"],))
+            for turma_id_prof in turmas_form:
                 db.execute(
                     "insert into professor_turma (professor_id, turma_id) values (?,?)",
                     (professor_row["id"], turma_id_prof),
@@ -364,7 +520,7 @@ def redefinir_senha(usuario_id):
     alvo = db.execute(
         "select * from usuarios where id = ? and escola_id = ?", (usuario_id, _escola_id_atual())
     ).fetchone()
-    if not _pode_gerenciar_usuario(usuario_logado(), alvo):
+    if not _pode_gerenciar_usuario(usuario_logado(), alvo, db):
         flash("Usuário não encontrado ou fora do seu acesso.", "erro")
         return redirect(url_for("gestao_usuarios.index"))
 
@@ -491,6 +647,7 @@ def modelo_csv_professores():
 def importar_alunos():
     db = get_db()
     escola_id = _escola_id_atual()
+    segmento_ator = escopo_etapa(usuario_logado())
     resultados = None
 
     if request.method == "POST":
@@ -526,13 +683,20 @@ def importar_alunos():
             if db.execute("select id from usuarios where email = ?", (email,)).fetchone():
                 resultados.append({"linha": i, "nome": nome, "status": "erro", "motivo": f"e-mail {email} já cadastrado"})
                 continue
-            turma = db.execute(
-                "select t.id from turmas t join series s on s.id = t.serie_id "
-                "where s.escola_id = ? and lower(t.nome) = lower(?)",
-                (escola_id, turma_nome),
-            ).fetchone()
+            if segmento_ator:
+                turma = db.execute(
+                    "select t.id from turmas t join series s on s.id = t.serie_id "
+                    "where s.escola_id = ? and s.etapa = ? and lower(t.nome) = lower(?)",
+                    (escola_id, segmento_ator, turma_nome),
+                ).fetchone()
+            else:
+                turma = db.execute(
+                    "select t.id from turmas t join series s on s.id = t.serie_id "
+                    "where s.escola_id = ? and lower(t.nome) = lower(?)",
+                    (escola_id, turma_nome),
+                ).fetchone()
             if not turma:
-                resultados.append({"linha": i, "nome": nome, "status": "erro", "motivo": f"turma '{turma_nome}' não encontrada"})
+                resultados.append({"linha": i, "nome": nome, "status": "erro", "motivo": f"turma '{turma_nome}' não encontrada ou fora do seu segmento"})
                 continue
 
             senha_temp = _gerar_senha_temporaria()
@@ -554,6 +718,7 @@ def importar_alunos():
 def importar_professores():
     db = get_db()
     escola_id = _escola_id_atual()
+    segmento_ator = escopo_etapa(usuario_logado())
     resultados = None
 
     if request.method == "POST":
@@ -597,11 +762,18 @@ def importar_professores():
             turma_ids = []
             turmas_nao_encontradas = []
             for nome_turma in nomes_turma:
-                turma = db.execute(
-                    "select t.id from turmas t join series s on s.id = t.serie_id "
-                    "where s.escola_id = ? and lower(t.nome) = lower(?)",
-                    (escola_id, nome_turma),
-                ).fetchone()
+                if segmento_ator:
+                    turma = db.execute(
+                        "select t.id from turmas t join series s on s.id = t.serie_id "
+                        "where s.escola_id = ? and s.etapa = ? and lower(t.nome) = lower(?)",
+                        (escola_id, segmento_ator, nome_turma),
+                    ).fetchone()
+                else:
+                    turma = db.execute(
+                        "select t.id from turmas t join series s on s.id = t.serie_id "
+                        "where s.escola_id = ? and lower(t.nome) = lower(?)",
+                        (escola_id, nome_turma),
+                    ).fetchone()
                 if turma:
                     turma_ids.append(turma["id"])
                 else:
