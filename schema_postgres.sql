@@ -34,7 +34,16 @@ create table usuarios (
     nome          text not null,
     email         text not null unique,
     senha_hash    text not null,
-    papel         text not null check (papel in ('aluno','professor','coordenador','direcao','familia')),
+    -- nota: este arquivo é só referência (o banco real já tinha sido criado antes
+    -- dele existir, e novas colunas/papéis viraram migrations aplicadas direto no
+    -- Supabase) — 'psicopedagoga' e 'ativo' já existem na tabela real, só não
+    -- estavam registrados aqui; corrigido para não desviar do banco de verdade.
+    papel         text not null check (papel in ('aluno','professor','coordenador','direcao','familia','psicopedagoga')),
+    ativo         boolean not null default true,
+    -- segmento: só usado quando papel = 'coordenador', reaproveita os valores
+    -- de series.etapa para restringir a visão desse coordenador a uma etapa só
+    -- (ver escopo_etapa() em app/auth.py). NULL = sem restrição.
+    segmento      text,
     criado_em     timestamptz not null default now()
 );
 
