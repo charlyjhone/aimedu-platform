@@ -17,12 +17,12 @@
   <p>{{ r.resumo }}</p>
   {% if r.turmas_info %}
   <table>
-    <tr><th>Turma</th><th>Alunos</th><th>Com diagnóstico</th><th>Com redação</th><th>Alertas pendentes</th></tr>
+    <tr><th>Turma</th><th>Alunos</th><th>Com diagnóstico (na disciplina dele/dela)</th><th>Com redação</th><th>Alertas pendentes</th></tr>
     {% for t in r.turmas_info %}
     <tr>
       <td>{{ t.nome }}</td>
       <td>{{ t.total_alunos }}</td>
-      <td>{{ t.alunos_com_diagnostico }}</td>
+      <td>{{ t.alunos_com_diagnostico if t.alunos_com_diagnostico is not none else "—" }}</td>
       <td>{{ t.alunos_com_redacao }}</td>
       <td>{% if t.alertas_pendentes %}<span class="tag nivel-alto">{{ t.alertas_pendentes }}</span>{% else %}0{% endif %}</td>
     </tr>
