@@ -4,7 +4,7 @@
 <div class="card">
   <h2>{{ aluno['nome'] }}</h2>
   <p>Turma: {{ aluno['turma_nome'] }}</p>
-  <p>Gere um relatório atualizado a qualquer momento — ele junta os dados mais recentes de todos os módulos (diagnóstico de matemática, redação, bússola vocacional e radar da coordenação).</p>
+  <p>Gere um relatório atualizado a qualquer momento — ele junta os dados mais recentes de todos os módulos (diagnóstico adaptativo, redação, bússola vocacional e radar da coordenação).</p>
   <form method="post" action="{{ url_for('relatorios_familia.gerar', aluno_id=aluno['id']) }}">
     <button class="botao" type="submit">Gerar novo relatório</button>
   </form>
