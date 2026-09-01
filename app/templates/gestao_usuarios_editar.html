@@ -11,6 +11,16 @@
       Conta ativa (desmarque para bloquear o login desta pessoa)
     </label>
 
+    {% if pode_definir_segmento %}
+    <label for="segmento" style="margin-top:16px;">Segmento (restringe o que essa coordenação vê no sistema)</label>
+    <select name="segmento" id="segmento" style="width:100%; padding:10px; border:1px solid var(--borda); border-radius:6px; font-size:0.95rem;">
+      <option value="">Sem restrição (vê a escola inteira)</option>
+      {% for slug, rotulo in segmentos %}
+      <option value="{{ slug }}" {% if alvo['segmento'] == slug %}selected{% endif %}>{{ rotulo }}</option>
+      {% endfor %}
+    </select>
+    {% endif %}
+
     {% if alvo['papel'] == 'aluno' %}
     <label for="turma_id" style="margin-top:16px;">Turma</label>
     <select name="turma_id" id="turma_id" style="width:100%; padding:10px; border:1px solid var(--borda); border-radius:6px; font-size:0.95rem;">
