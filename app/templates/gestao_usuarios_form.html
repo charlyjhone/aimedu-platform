@@ -29,7 +29,12 @@
     </select>
 
     <label for="disciplina" style="margin-top:16px;">Disciplina (apenas para papel Professor)</label>
-    <input type="text" id="disciplina" name="disciplina" value="{{ form.get('disciplina', '') }}" placeholder="Ex.: Matemática">
+    <select name="disciplina" id="disciplina" style="width:100%; padding:10px; border:1px solid var(--borda); border-radius:6px; font-size:0.95rem;">
+      <option value="">Selecione...</option>
+      {% for d in disciplinas %}
+      <option value="{{ d }}" {% if form.get('disciplina') == d %}selected{% endif %}>{{ d }}</option>
+      {% endfor %}
+    </select>
 
     <label style="margin-top:16px;">Turmas que este professor vai lecionar (apenas para papel Professor)</label>
     {% for t in turmas %}
