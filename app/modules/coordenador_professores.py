@@ -41,7 +41,7 @@ import unicodedata
 from flask import Blueprint, render_template, redirect, url_for, request, flash
 
 from ..db import get_db, new_id
-from ..auth import login_obrigatorio, usuario_logado
+from ..auth import login_obrigatorio, usuario_logado, escopo_etapa
 from ..ai_engine import (
     resumo_desempenho_turma,
     sugestoes_pedagogicas_turma,
@@ -79,7 +79,19 @@ def _professor_do_usuario(db, usuario_id):
     return db.execute("select * from professores where usuario_id = ?", (usuario_id,)).fetchone()
 
 
-def _turmas_do_professor(db, professor_id):
+def _turmas_do_professor(db, professor_id, segmento=None):
+    """'segmento' só é usado quando quem está olhando é um coordenador
+    escopado vendo a turma de OUTRA pessoa (professor) — a visão do próprio
+    professor sobre as turmas dele nunca é restringida por segmento, já que
+    o segmento é um recorte de coordenação, não do professor."""
+    if segmento:
+        return db.execute(
+            "select t.id, t.nome from turmas t "
+            "join professor_turma pt on pt.turma_id = t.id "
+            "join series s on s.id = t.serie_id "
+            "where pt.professor_id = ? and s.etapa = ? order by t.nome",
+            (professor_id, segmento),
+        ).fetchall()
     return db.execute(
         "select t.id, t.nome from turmas t "
         "join professor_turma pt on pt.turma_id = t.id "
@@ -88,7 +100,14 @@ def _turmas_do_professor(db, professor_id):
     ).fetchall()
 
 
-def _turmas_da_escola(db, escola_id):
+def _turmas_da_escola(db, escola_id, segmento=None):
+    if segmento:
+        return db.execute(
+            "select t.id, t.nome from turmas t "
+            "join series s on s.id = t.serie_id "
+            "where s.escola_id = ? and s.etapa = ? order by t.nome",
+            (escola_id, segmento),
+        ).fetchall()
     return db.execute(
         "select t.id, t.nome from turmas t "
         "join series s on s.id = t.serie_id "
@@ -97,7 +116,37 @@ def _turmas_da_escola(db, escola_id):
     ).fetchall()
 
 
-def _turma_da_escola(db, turma_id, escola_id):
+def _professores_visiveis(db, escola_id, segmento=None):
+    """Coordenação/direção sem segmento veem todos os professores da escola;
+    coordenador escopado só vê professores que lecionam ao menos uma turma
+    do próprio segmento (o mesmo professor pode aparecer pra mais de uma
+    coordenação, se leciona em mais de um segmento — cada uma só enxerga o
+    pedaço que é seu)."""
+    if segmento:
+        return db.execute(
+            "select distinct p.id, us.nome, p.disciplina from professores p "
+            "join usuarios us on us.id = p.usuario_id "
+            "join professor_turma pt on pt.professor_id = p.id "
+            "join turmas t on t.id = pt.turma_id join series s on s.id = t.serie_id "
+            "where us.escola_id = ? and s.etapa = ? order by us.nome",
+            (escola_id, segmento),
+        ).fetchall()
+    return db.execute(
+        "select p.id, us.nome, p.disciplina from professores p "
+        "join usuarios us on us.id = p.usuario_id "
+        "where us.escola_id = ? order by us.nome",
+        (escola_id,),
+    ).fetchall()
+
+
+def _turma_da_escola(db, turma_id, escola_id, segmento=None):
+    if segmento:
+        return db.execute(
+            "select t.id, t.nome from turmas t "
+            "join series s on s.id = t.serie_id "
+            "where t.id = ? and s.escola_id = ? and s.etapa = ?",
+            (turma_id, escola_id, segmento),
+        ).fetchone()
     return db.execute(
         "select t.id, t.nome from turmas t "
         "join series s on s.id = t.serie_id "
@@ -108,7 +157,7 @@ def _turma_da_escola(db, turma_id, escola_id):
 
 def _professor_pode_ver_turma(db, usuario, turma_id):
     if usuario["papel"] in ("coordenador", "direcao"):
-        return _turma_da_escola(db, turma_id, usuario["escola_id"]) is not None
+        return _turma_da_escola(db, turma_id, usuario["escola_id"], escopo_etapa(usuario)) is not None
     if usuario["papel"] == "professor":
         professor = _professor_do_usuario(db, usuario["id"])
         if not professor:
@@ -232,13 +281,9 @@ def index():
         return render_template("coordenador_professores_index.html", turmas=turmas, professores=None)
 
     escola_id = _escola_id_atual()
-    turmas = _turmas_da_escola(db, escola_id)
-    professores = db.execute(
-        "select p.id, us.nome, p.disciplina from professores p "
-        "join usuarios us on us.id = p.usuario_id "
-        "where us.escola_id = ? order by us.nome",
-        (escola_id,),
-    ).fetchall()
+    segmento = escopo_etapa(u)
+    turmas = _turmas_da_escola(db, escola_id, segmento)
+    professores = _professores_visiveis(db, escola_id, segmento)
     return render_template("coordenador_professores_index.html", turmas=turmas, professores=professores)
 
 
@@ -317,21 +362,20 @@ def duvidas():
 def relatorio_professores():
     db = get_db()
     escola_id = _escola_id_atual()
+    segmento = escopo_etapa(usuario_logado())
     disciplinas_disponiveis = _disciplinas_disponiveis(db)
 
-    professores = db.execute(
-        "select p.id, us.nome, p.disciplina from professores p "
-        "join usuarios us on us.id = p.usuario_id "
-        "where us.escola_id = ? order by us.nome",
-        (escola_id,),
-    ).fetchall()
+    professores = _professores_visiveis(db, escola_id, segmento)
 
     relatorios = []
     for prof in professores:
         disciplina_slug = _normalizar_disciplina(prof["disciplina"])
         tem_banco = disciplina_slug is not None and disciplina_slug in disciplinas_disponiveis
 
-        turmas_do_prof = _turmas_do_professor(db, prof["id"])
+        # Um coordenador escopado só vê, dentro do relatório de cada
+        # professor, as turmas do PRÓPRIO segmento — se o professor também
+        # leciona em outro segmento, aquela parte é assunto da outra coordenação.
+        turmas_do_prof = _turmas_do_professor(db, prof["id"], segmento)
         turmas_info = []
         for t in turmas_do_prof:
             gerais = _stats_gerais_turma(db, t["id"])
