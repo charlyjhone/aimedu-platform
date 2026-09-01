@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block titulo %}Diagnóstico Adaptativo — AIM.Edu{% endblock %}
+{% block conteudo %}
+<div class="card">
+  <h2>Diagnóstico Adaptativo</h2>
+  <p>Um teste que se ajusta à sua dificuldade a cada resposta — quanto mais preciso, mais ele mostra exatamente onde focar. Escolha a disciplina.</p>
+</div>
+
+<div class="card">
+  {% if disciplinas %}
+  <table>
+    <tr><th>Disciplina</th><th>Diagnósticos já feitos</th><th></th></tr>
+    {% for d in disciplinas %}
+    <tr>
+      <td>{{ d|disciplina }}</td>
+      <td>{{ feitos_por_disciplina.get(d, 0) }}</td>
+      <td><a class="botao" href="{{ url_for('diagnostico.iniciar', disciplina=d) }}">Iniciar novo diagnóstico</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>Ainda não há nenhum banco de questões cadastrado.</p>
+  {% endif %}
+</div>
+
+<p><a href="{{ url_for('auth.painel') }}">&larr; Voltar ao painel</a></p>
+{% endblock %}
