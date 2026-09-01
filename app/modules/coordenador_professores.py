@@ -2,13 +2,14 @@
 Módulo do AIM.Edu: Coordenador de Professores por IA.
 
 Junta, num só lugar, tudo que os outros módulos pedagógicos já gravam sobre
-uma turma — Diagnóstico Adaptativo de Matemática, Redação e Radar da
-Coordenação — e devolve isso em 4 formatos, todos usando app.ai_engine
-(mesma camada de IA de todo o projeto, hoje por regras locais):
+uma turma — Diagnóstico Adaptativo, Redação e Radar da Coordenação — e
+devolve isso em 4 formatos, todos usando app.ai_engine (mesma camada de IA de
+todo o projeto, hoje por regras locais):
 
   1. Acompanhamento de desempenho da turma — o professor abre a própria
-     turma e vê nível médio de matemática, eixos da BNCC mais fracos, nota
-     média de redação, competências do ENEM mais fracas e alertas pendentes.
+     turma e vê o Diagnóstico Adaptativo NA DISCIPLINA DELE (eixos da BNCC
+     mais fracos, nível médio), a nota média de redação, as competências do
+     ENEM mais fracas e os alertas pendentes.
   2. Sugestões pedagógicas — a partir dos mesmos dados, uma lista curta de
      ações práticas para o professor.
   3. Assistente de dúvidas — um FAQ simples onde o professor pergunta sobre
@@ -16,13 +17,27 @@ Coordenação — e devolve isso em 4 formatos, todos usando app.ai_engine
      hora, com histórico salvo.
   4. Relatório da coordenação sobre os professores — só coordenação/direção:
      adesão de cada professor às ferramentas (não desempenho dos alunos em
-     si), turma por turma.
+     si), turma por turma, com o Diagnóstico Adaptativo já filtrado pela
+     disciplina de cada professor.
+
+Sobre disciplinas: o Diagnóstico Adaptativo (app.modules.diagnostico) só
+existe para as disciplinas que já têm itens cadastrados em itens_banco (hoje
+Matemática e Português — ver seed_data.py). O campo professores.disciplina é
+texto livre ("Matemática", "Português"...) preenchido na Gestão de Usuários;
+_normalizar_disciplina() abaixo tira acentos/caixa para comparar com o slug
+salvo em itens_banco/diagnosticos ("matematica", "portugues"). Um professor
+de uma disciplina sem banco de itens ainda (ex.: História) simplesmente não
+vê o bloco de Diagnóstico Adaptativo — vê normalmente Redação e Radar, que
+são gerais. A coordenação/direção, ao abrir uma turma, vê um bloco por
+disciplina que já tiver diagnóstico ali, não só a de um professor.
 
 Nenhuma tabela nova de dado pedagógico é criada aqui além de
 duvidas_professor (histórico do assistente) — os números vêm de tabelas que
-diagnostico_matematica.py, redacao.py e radar_coordenacao.py já preenchem,
+app.modules.diagnostico, redacao.py e radar_coordenacao.py já preenchem,
 prova de que é um projeto único e interligado, não um módulo isolado.
 """
+import unicodedata
+
 from flask import Blueprint, render_template, redirect, url_for, request, flash
 
 from ..db import get_db, new_id
@@ -43,6 +58,17 @@ PAPEIS_DUVIDAS = ("professor", "coordenador", "direcao", "psicopedagoga")
 LIMIAR_MINIMO_EIXO = 2  # só considera um eixo "fraco" se já foram respondidas pelo menos N questões dele
 LIMIAR_TAXA_EIXO_FRACO = 0.7  # eixo só entra como "fraco" se a taxa de acerto for menor que isso
 LIMIAR_NOTA_COMPETENCIA_FRACA = 160  # competência (0-200) só entra como "fraca" se a média for menor que isso
+
+
+def _normalizar_disciplina(texto):
+    """'Matemática' -> 'matematica', 'Português' -> 'portugues' — para
+    comparar o texto livre de professores.disciplina com o slug salvo em
+    itens_banco.disciplina/diagnosticos.disciplina, sem exigir que a
+    coordenação digite exatamente igual ao slug."""
+    if not texto:
+        return None
+    sem_acento = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode("ascii")
+    return sem_acento.strip().lower() or None
 
 
 def _escola_id_atual():
@@ -94,42 +120,31 @@ def _professor_pode_ver_turma(db, usuario, turma_id):
     return False
 
 
-def _stats_turma(db, turma_id):
-    """Calcula, a partir das tabelas de diagnóstico/redação/radar, tudo que
-    resumo_desempenho_turma e sugestoes_pedagogicas_turma precisam."""
+def _disciplinas_disponiveis(db):
+    """Disciplinas com pelo menos 1 item no banco (as mesmas que o módulo de
+    Diagnóstico Adaptativo oferece ao aluno)."""
+    linhas = db.execute("select distinct disciplina from itens_banco").fetchall()
+    return {linha["disciplina"] for linha in linhas}
+
+
+def _disciplinas_com_diagnostico_na_turma(db, turma_id):
+    """Disciplinas em que pelo menos um aluno da turma já finalizou um
+    Diagnóstico Adaptativo — é isso que decide quantos blocos a coordenação
+    vê na página da turma."""
+    linhas = db.execute(
+        "select distinct d.disciplina from diagnosticos d join alunos a on a.id = d.aluno_id "
+        "where a.turma_id = ? and d.finalizado_em is not null",
+        (turma_id,),
+    ).fetchall()
+    return [linha["disciplina"] for linha in linhas]
+
+
+def _stats_gerais_turma(db, turma_id):
+    """Números da turma que não dependem de disciplina: total de alunos,
+    Redação e Radar."""
     total_alunos = db.execute(
         "select count(*) c from alunos where turma_id = ?", (turma_id,)
     ).fetchone()["c"]
-
-    diag = db.execute(
-        "select count(distinct a.id) alunos_com_diag, avg(d.nivel_final) media_nivel "
-        "from alunos a join diagnosticos d on d.aluno_id = a.id "
-        "where a.turma_id = ? and d.finalizado_em is not null",
-        (turma_id,),
-    ).fetchone()
-    alunos_com_diagnostico = diag["alunos_com_diag"] or 0
-    media_nivel_diag = diag["media_nivel"]
-
-    eixos_raw = db.execute(
-        "select i.eixo_bncc eixo, "
-        "sum(case when dr.correta then 1 else 0 end) acertos, count(*) total "
-        "from alunos a "
-        "join diagnosticos d on d.aluno_id = a.id "
-        "join diagnostico_respostas dr on dr.diagnostico_id = d.id "
-        "join itens_banco i on i.id = dr.item_id "
-        "where a.turma_id = ? "
-        "group by i.eixo_bncc",
-        (turma_id,),
-    ).fetchall()
-    eixos_com_taxa = [
-        (linha["eixo"] or "geral", linha["acertos"] / linha["total"])
-        for linha in eixos_raw
-        if linha["total"] >= LIMIAR_MINIMO_EIXO
-    ]
-    eixos_fracos = sorted(
-        (et for et in eixos_com_taxa if et[1] < LIMIAR_TAXA_EIXO_FRACO),
-        key=lambda et: et[1],
-    )[:2]
 
     red = db.execute(
         "select count(*) n, avg(r.nota_c1) c1, avg(r.nota_c2) c2, avg(r.nota_c3) c3, "
@@ -158,13 +173,50 @@ def _stats_turma(db, turma_id):
 
     return {
         "total_alunos": total_alunos,
-        "alunos_com_diagnostico": alunos_com_diagnostico,
-        "media_nivel_diag": media_nivel_diag,
-        "eixos_fracos": eixos_fracos,
         "alunos_com_redacao": alunos_com_redacao,
         "media_nota_redacao": media_nota_redacao,
         "competencias_fracas": competencias_fracas,
         "alertas_pendentes": alertas_pendentes,
+    }
+
+
+def _stats_diagnostico_turma(db, turma_id, disciplina):
+    """Números do Diagnóstico Adaptativo de UMA disciplina, para os alunos
+    de uma turma: quantos já fizeram, nível médio e eixos da BNCC mais
+    fracos (a mesma conta que antes misturava todas as disciplinas — agora
+    sempre filtrada por 'disciplina')."""
+    diag = db.execute(
+        "select count(distinct a.id) alunos_com_diag, avg(d.nivel_final) media_nivel "
+        "from alunos a join diagnosticos d on d.aluno_id = a.id "
+        "where a.turma_id = ? and d.disciplina = ? and d.finalizado_em is not null",
+        (turma_id, disciplina),
+    ).fetchone()
+
+    eixos_raw = db.execute(
+        "select i.eixo_bncc eixo, "
+        "sum(case when dr.correta then 1 else 0 end) acertos, count(*) total "
+        "from alunos a "
+        "join diagnosticos d on d.aluno_id = a.id "
+        "join diagnostico_respostas dr on dr.diagnostico_id = d.id "
+        "join itens_banco i on i.id = dr.item_id "
+        "where a.turma_id = ? and d.disciplina = ? "
+        "group by i.eixo_bncc",
+        (turma_id, disciplina),
+    ).fetchall()
+    eixos_com_taxa = [
+        (linha["eixo"] or "geral", linha["acertos"] / linha["total"])
+        for linha in eixos_raw
+        if linha["total"] >= LIMIAR_MINIMO_EIXO
+    ]
+    eixos_fracos = sorted(
+        (et for et in eixos_com_taxa if et[1] < LIMIAR_TAXA_EIXO_FRACO),
+        key=lambda et: et[1],
+    )[:2]
+
+    return {
+        "alunos_com_diagnostico": diag["alunos_com_diag"] or 0,
+        "media_nivel": diag["media_nivel"],
+        "eixos_fracos": eixos_fracos,
     }
 
 
@@ -201,20 +253,35 @@ def turma(turma_id):
         return redirect(url_for("coordenador_professores.index"))
 
     turma_row = db.execute("select * from turmas where id = ?", (turma_id,)).fetchone()
-    stats = _stats_turma(db, turma_id)
+    gerais = _stats_gerais_turma(db, turma_id)
+
+    if u["papel"] == "professor":
+        # Só a disciplina dele/dela — é isso que resolve um professor de
+        # outra matéria não ver "eixos fracos" de uma disciplina que não é a
+        # sua (o problema que esta versão corrige).
+        professor = _professor_do_usuario(db, u["id"])
+        disciplina_slug = _normalizar_disciplina(professor["disciplina"]) if professor else None
+        if disciplina_slug and disciplina_slug in _disciplinas_disponiveis(db):
+            diagnosticos_por_disciplina = {disciplina_slug: _stats_diagnostico_turma(db, turma_id, disciplina_slug)}
+        else:
+            diagnosticos_por_disciplina = {}
+    else:
+        # Coordenação/direção vê todas as disciplinas com dado nesta turma.
+        disciplinas_presentes = _disciplinas_com_diagnostico_na_turma(db, turma_id)
+        diagnosticos_por_disciplina = {d: _stats_diagnostico_turma(db, turma_id, d) for d in disciplinas_presentes}
 
     resumo = resumo_desempenho_turma(
-        turma_row["nome"], stats["total_alunos"], stats["alunos_com_diagnostico"],
-        stats["media_nivel_diag"], stats["eixos_fracos"], stats["alunos_com_redacao"],
-        stats["media_nota_redacao"], stats["competencias_fracas"], stats["alertas_pendentes"],
+        turma_row["nome"], gerais["total_alunos"], diagnosticos_por_disciplina,
+        gerais["alunos_com_redacao"], gerais["media_nota_redacao"], gerais["competencias_fracas"],
+        gerais["alertas_pendentes"],
     )
     sugestoes = sugestoes_pedagogicas_turma(
-        stats["eixos_fracos"], stats["competencias_fracas"], stats["alertas_pendentes"]
+        diagnosticos_por_disciplina, gerais["competencias_fracas"], gerais["alertas_pendentes"]
     )
 
     return render_template(
-        "coordenador_professores_turma.html", turma=turma_row, stats=stats,
-        resumo=resumo, sugestoes=sugestoes,
+        "coordenador_professores_turma.html", turma=turma_row, gerais=gerais,
+        diagnosticos_por_disciplina=diagnosticos_por_disciplina, resumo=resumo, sugestoes=sugestoes,
     )
 
 
@@ -250,6 +317,7 @@ def duvidas():
 def relatorio_professores():
     db = get_db()
     escola_id = _escola_id_atual()
+    disciplinas_disponiveis = _disciplinas_disponiveis(db)
 
     professores = db.execute(
         "select p.id, us.nome, p.disciplina from professores p "
@@ -260,16 +328,23 @@ def relatorio_professores():
 
     relatorios = []
     for prof in professores:
+        disciplina_slug = _normalizar_disciplina(prof["disciplina"])
+        tem_banco = disciplina_slug is not None and disciplina_slug in disciplinas_disponiveis
+
         turmas_do_prof = _turmas_do_professor(db, prof["id"])
         turmas_info = []
         for t in turmas_do_prof:
-            stats = _stats_turma(db, t["id"])
+            gerais = _stats_gerais_turma(db, t["id"])
+            alunos_com_diagnostico = None
+            if tem_banco:
+                diag = _stats_diagnostico_turma(db, t["id"], disciplina_slug)
+                alunos_com_diagnostico = diag["alunos_com_diagnostico"]
             turmas_info.append({
                 "nome": t["nome"],
-                "total_alunos": stats["total_alunos"],
-                "alunos_com_diagnostico": stats["alunos_com_diagnostico"],
-                "alunos_com_redacao": stats["alunos_com_redacao"],
-                "alertas_pendentes": stats["alertas_pendentes"],
+                "total_alunos": gerais["total_alunos"],
+                "alunos_com_diagnostico": alunos_com_diagnostico,
+                "alunos_com_redacao": gerais["alunos_com_redacao"],
+                "alertas_pendentes": gerais["alertas_pendentes"],
             })
         resumo = resumo_engajamento_professor(prof["nome"], prof["disciplina"], turmas_info)
         relatorios.append({"professor": prof, "turmas_info": turmas_info, "resumo": resumo})
