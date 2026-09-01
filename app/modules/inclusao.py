@@ -32,7 +32,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 
 from ..db import get_db, new_id
-from ..auth import login_obrigatorio, usuario_logado
+from ..auth import login_obrigatorio, usuario_logado, escopo_etapa
 
 bp = Blueprint("inclusao", __name__, url_prefix="/inclusao")
 
@@ -79,10 +79,15 @@ def _turmas_do_professor(db, usuario_id):
 
 
 def _alunos_visiveis(db):
-    """Coordenação/direção/psicopedagoga veem todos os alunos da escola;
-    professor só os alunos das turmas em que dá aula (via professor_turma)."""
+    """Direção e psicopedagoga SEMPRE veem todos os alunos da escola — dado
+    sensível de inclusão é o motivo de a psicopedagoga ter acesso amplo aqui,
+    e isso não muda com o recorte por segmento (pedido explícito: 'a
+    psicopedagoga continua com acesso a todas as turmas'). Coordenação vê
+    todos, a não ser que tenha um segmento definido — nesse caso só os
+    alunos daquele segmento. Professor só os alunos das turmas em que dá
+    aula (via professor_turma)."""
     u = usuario_logado()
-    if u["papel"] in ("coordenador", "direcao", "psicopedagoga"):
+    if u["papel"] in ("direcao", "psicopedagoga") or (u["papel"] == "coordenador" and not escopo_etapa(u)):
         return db.execute(
             "select al.id, us.nome as nome, t.nome as turma_nome, al.turma_id "
             "from alunos al "
@@ -92,6 +97,18 @@ def _alunos_visiveis(db):
             "where s.escola_id = ? "
             "order by t.nome, us.nome",
             (_escola_id_atual(),),
+        ).fetchall()
+
+    if u["papel"] == "coordenador":
+        return db.execute(
+            "select al.id, us.nome as nome, t.nome as turma_nome, al.turma_id "
+            "from alunos al "
+            "join usuarios us on us.id = al.usuario_id "
+            "join turmas t on t.id = al.turma_id "
+            "join series s on s.id = t.serie_id "
+            "where s.escola_id = ? and s.etapa = ? "
+            "order by t.nome, us.nome",
+            (_escola_id_atual(), escopo_etapa(u)),
         ).fetchall()
 
     turma_ids = _turmas_do_professor(db, u["id"])
