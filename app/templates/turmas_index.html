@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block titulo %}Turmas — AIM.Edu{% endblock %}
+{% block conteudo %}
+<div class="card">
+  <h2>Turmas</h2>
+  <p style="color:#666; font-size:0.85rem;">
+    {% if turmas %}Abra uma turma para ver a lista de alunos matriculados nela.
+    {% else %}Nenhuma turma disponível para o seu acesso no momento.{% endif %}
+  </p>
+</div>
+
+{% if turmas %}
+<div class="card">
+  <table>
+    <tr><th>Turma</th><th>Série</th><th>Ano letivo</th><th>Alunos</th><th></th></tr>
+    {% for t in turmas %}
+    <tr>
+      <td>{{ t['nome'] }}</td>
+      <td>{{ t['serie_nome'] }}</td>
+      <td>{{ t['ano_letivo'] }}</td>
+      <td>{{ t['total_alunos'] }}</td>
+      <td><a href="{{ url_for('turmas.roster', turma_id=t['id']) }}">Ver alunos</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+{% endblock %}
