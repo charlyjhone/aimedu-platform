@@ -6,28 +6,81 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-  <header class="topo">
-    <a class="marca" href="{{ url_for('auth.painel') }}">AIM.Edu</a>
-    {% if session.get('usuario') and session['usuario']['papel'] in ('coordenador', 'direcao', 'professor', 'psicopedagoga') %}
+{% macro flashes() %}
+  {% with mensagens = get_flashed_messages(with_categories=true) %}
+    {% for categoria, msg in mensagens %}
+      <div class="flash {{ categoria }}">{{ msg }}</div>
+    {% endfor %}
+  {% endwith %}
+{% endmacro %}
+
+{# O conteúdo de cada página só é definido uma vez (bloco "conteudo"); aqui
+   capturamos o resultado já renderizado numa variável pra poder encaixar
+   dentro de um de dois invólucros (com menu lateral, logado; ou tela pública,
+   como o login) sem duplicar o bloco no template. #}
+{% set corpo %}{% block conteudo %}{% endblock %}{% endset %}
+
+{% if session.get('usuario') %}
+<div class="shell">
+  <aside class="sidebar">
+    <a class="brand" href="{{ url_for('auth.painel') }}"><span class="brand-mark">Æ</span> AIM.Edu</a>
+
+    <nav class="nav-scroll">
+      <div class="nav-secao">Geral</div>
+      <a class="nav-item {% if request.endpoint == 'auth.painel' %}ativo{% endif %}" href="{{ url_for('auth.painel') }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">{{ icones_svg['home']|safe }}</svg> Painel
+      </a>
+
+      {% for secao in menu_lateral %}
+      <div class="nav-secao">{{ secao.nome }}</div>
+      {% for item in secao.itens %}
+      <a class="nav-item {% if request.blueprint == item.endpoint.split('.')[0] %}ativo{% endif %}" href="{{ url_for(item.endpoint) }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">{{ icones_svg[item.icone]|safe }}</svg> {{ item.label }}
+      </a>
+      {% endfor %}
+      {% endfor %}
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="avatar">{{ session['usuario']['nome']|iniciais }}</div>
+      <div class="sidebar-footer-texto">
+        <div class="nome">{{ session['usuario']['nome'] }}</div>
+        <div class="papel">{{ papel_label }}</div>
+        <div class="sidebar-footer-links">
+          <a href="{{ url_for('gestao_usuarios.perfil') }}">Meu perfil</a> · <a href="{{ url_for('auth.logout') }}">Sair</a>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      {% if session['usuario']['papel'] in ('coordenador', 'direcao', 'professor', 'psicopedagoga') %}
       <form class="busca-topo" method="get" action="{{ url_for('turmas.busca') }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
         <input type="text" name="q" value="{{ request.args.get('q', '') }}" placeholder="Buscar aluno por nome...">
       </form>
-    {% endif %}
-    {% if session.get('usuario') %}
-      <div>
-        <span style="margin-right:16px;">{{ session['usuario']['nome'] }} · {{ session['usuario']['papel']|capitalize }}</span>
-        <a href="{{ url_for('gestao_usuarios.perfil') }}" style="margin-right:16px;">Meu perfil</a>
-        <a href="{{ url_for('auth.logout') }}">Sair</a>
-      </div>
-    {% endif %}
-  </header>
-  <main>
-    {% with mensagens = get_flashed_messages(with_categories=true) %}
-      {% for categoria, msg in mensagens %}
-        <div class="flash {{ categoria }}">{{ msg }}</div>
-      {% endfor %}
-    {% endwith %}
-    {% block conteudo %}{% endblock %}
+      {% else %}
+      <div class="busca-topo-vazio"></div>
+      {% endif %}
+      {% if escola_atual %}
+      <div class="selo-escola">{{ escola_atual }}</div>
+      {% endif %}
+    </div>
+    <main class="conteudo">
+      {{ flashes() }}
+      {{ corpo }}
+    </main>
+  </div>
+</div>
+{% else %}
+<div class="tela-publica">
+  <div class="marca-publica"><span class="brand-mark">Æ</span> AIM.Edu</div>
+  <main class="conteudo-publica">
+    {{ flashes() }}
+    {{ corpo }}
   </main>
+</div>
+{% endif %}
 </body>
 </html>
