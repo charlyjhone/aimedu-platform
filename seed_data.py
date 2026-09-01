@@ -2,12 +2,16 @@
 Popula o banco local (SQLite) com dados de demonstração:
   - 1 escola ("Escola A"), 1 série (3º ano EM), 1 turma
   - usuários de demonstração para todos os papéis — aluno, coordenador,
-    professor, família, direção (admin) e psicopedagoga (senha "123456"
-    para todos)
+    2 professores (Matemática e Português), família, direção (admin) e
+    psicopedagoga (senha "123456" para todos)
   - banco de itens de Matemática: 5 eixos x 5 dificuldades = 25 questões
+  - banco de itens de Português: 4 eixos x 5 dificuldades = 20 questões
+    (prova de que o Diagnóstico Adaptativo e o Coordenador de Professores
+    por IA funcionam com mais de uma disciplina — não só Matemática)
 
 Rodar: python3 seed_data.py  (idempotente — pode rodar de novo sem duplicar)
 """
+import json
 import sys
 from pathlib import Path
 
@@ -17,10 +21,10 @@ from app import create_app
 from app.db import get_db, new_id
 from app.auth import hash_senha
 
-EIXOS = ["Números", "Álgebra e Funções", "Geometria", "Grandezas e Medidas", "Probabilidade e Estatística"]
+EIXOS_MATEMATICA = ["Números", "Álgebra e Funções", "Geometria", "Grandezas e Medidas", "Probabilidade e Estatística"]
 
 # (eixo, dificuldade) -> item. Uma questão por combinação = 25 itens no total.
-ITENS = [
+ITENS_MATEMATICA = [
     # ---- Números ----
     dict(eixo="Números", dif=1, enunciado="Uma loja deu 10% de desconto em um produto de R$ 200. Qual o valor do desconto?",
          alts=[("A","R$ 10"),("B","R$ 20"),("C","R$ 30"),("D","R$ 2")], correta="B",
@@ -97,6 +101,115 @@ ITENS = [
     dict(eixo="Probabilidade e Estatística", dif=5, enunciado="Duas moedas honestas são lançadas. Qual a probabilidade de sair pelo menos uma cara?",
          alts=[("A","1/4"),("B","1/2"),("C","3/4"),("D","1")], correta="C",
          exp="P(nenhuma cara) = 1/4; P(pelo menos uma) = 1 − 1/4 = 3/4."),
+]
+
+EIXOS_PORTUGUES = ["Leitura e Interpretação de Textos", "Gramática e Norma Culta", "Literatura e Interpretação", "Produção Textual e Coesão"]
+
+# (eixo, dificuldade) -> item. Uma questão por combinação = 20 itens no total.
+ITENS_PORTUGUES = [
+    # ---- Leitura e Interpretação de Textos ----
+    dict(eixo="Leitura e Interpretação de Textos", dif=1,
+         enunciado="Na frase \"No trabalho, às vezes preciso engolir sapos\", a expressão \"engolir sapos\" significa:",
+         alts=[("A","comer algo desagradável"),("B","suportar calado situações desagradáveis"),
+               ("C","ter medo de anfíbios"),("D","cometer um erro grave")], correta="B",
+         exp="\"Engolir sapos\" é expressão idiomática para suportar calado algo desagradável."),
+    dict(eixo="Leitura e Interpretação de Textos", dif=2,
+         enunciado="O provérbio \"Em terra de cego, quem tem um olho é rei\" quer dizer que:",
+         alts=[("A","pessoas com deficiência visual são respeitadas"),
+               ("B","quem tem pouca vantagem se destaca onde os outros têm menos ainda"),
+               ("C","é preciso ter os dois olhos para liderar"),("D","reis eram frequentemente cegos")],
+         correta="B", exp="O provérbio indica que uma pequena vantagem já basta para se destacar num grupo com menos ainda."),
+    dict(eixo="Leitura e Interpretação de Textos", dif=3,
+         enunciado="\"O uso excessivo de agrotóxicos vem contaminando lençóis freáticos em diversas regiões do país, "
+                    "afetando tanto a qualidade da água consumida pela população quanto a biodiversidade local.\" "
+                    "Qual é a ideia central do texto?",
+         alts=[("A","a agricultura brasileira é a mais produtiva do mundo"),
+               ("B","o uso excessivo de agrotóxicos contamina a água e prejudica a biodiversidade"),
+               ("C","lençóis freáticos não afetam a saúde humana"),
+               ("D","a biodiversidade brasileira é irrelevante para a agricultura")],
+         correta="B", exp="O texto liga diretamente o uso excessivo de agrotóxicos à contaminação da água e ao prejuízo à biodiversidade."),
+    dict(eixo="Leitura e Interpretação de Textos", dif=4,
+         enunciado="\"Claro, mais um feriado prolongado bem no meio do projeto — que sorte a nossa.\" O tom predominante da frase é:",
+         alts=[("A","comemorativo"),("B","irônico"),("C","neutro e informativo"),("D","formal e técnico")],
+         correta="B", exp="O contexto (feriado atrapalhando o projeto) associado a \"que sorte a nossa\" indica ironia, não comemoração real."),
+    dict(eixo="Leitura e Interpretação de Textos", dif=5,
+         enunciado="\"Embora os defensores do projeto afirmem que ele trará empregos, os dados apresentados não "
+                    "detalham nem o número nem a qualidade desses postos de trabalho, o que sugere que o argumento é "
+                    "mais retórico do que fundamentado.\" A crítica do autor está baseada principalmente:",
+         alts=[("A","na discordância com a criação de empregos em si"),
+               ("B","na ausência de dados concretos que sustentem o argumento apresentado"),
+               ("C","na comparação com outros projetos semelhantes"),
+               ("D","na opinião pessoal do autor sobre o tema")],
+         correta="B", exp="O autor não nega os empregos; aponta a falta de dados que comprovem a afirmação, tornando o argumento retórico."),
+
+    # ---- Gramática e Norma Culta ----
+    dict(eixo="Gramática e Norma Culta", dif=1, enunciado="\"Os alunos ___ para a prova ontem.\" Qual forma completa corretamente a frase?",
+         alts=[("A","estudou"),("B","estudaram"),("C","estuda"),("D","estudam")], correta="B",
+         exp="Sujeito plural (\"os alunos\") exige verbo no plural: estudaram."),
+    dict(eixo="Gramática e Norma Culta", dif=2, enunciado="\"Cheguei ___ escola às 7h.\" Qual opção está correta?",
+         alts=[("A","a"),("B","à"),("C","há"),("D","as")], correta="B",
+         exp="\"À\" = a (preposição) + a (artigo feminino antes de \"escola\"), indicando crase."),
+    dict(eixo="Gramática e Norma Culta", dif=3, enunciado="Qual frase segue a norma culta quanto à colocação pronominal em início de frase?",
+         alts=[("A","Me diga a verdade."),("B","Diga-me a verdade."),("C","Se diga a verdade."),("D","Dizem-me a verdade sempre.")],
+         correta="B", exp="A norma culta formal evita iniciar frase com pronome oblíquo átono; usa-se \"Diga-me\"."),
+    dict(eixo="Gramática e Norma Culta", dif=4, enunciado="\"Prefiro café ___ chá.\" Qual preposição a norma culta exige com o verbo \"preferir\"?",
+         alts=[("A","que"),("B","do que"),("C","a"),("D","com")], correta="C",
+         exp="O verbo \"preferir\", na norma culta, rege a preposição \"a\": \"prefiro X a Y\", sem \"que\"/\"do que\"."),
+    dict(eixo="Gramática e Norma Culta", dif=5,
+         enunciado="\"Seguem ___ à carta os documentos solicitados.\" Qual forma de \"anexo\" concorda corretamente com \"os documentos\"?",
+         alts=[("A","anexo"),("B","anexos"),("C","anexa"),("D","anexas")], correta="B",
+         exp="\"Anexo\" funciona como adjetivo e concorda com \"os documentos\" (masculino plural): \"seguem anexos à carta...\"."),
+
+    # ---- Literatura e Interpretação ----
+    dict(eixo="Literatura e Interpretação", dif=1, enunciado="Qual característica é mais associada ao Romantismo brasileiro (1ª metade do século XIX)?",
+         alts=[("A","objetividade científica e realismo cru"),
+               ("B","idealização do amor, da natureza e do herói nacional (indianismo)"),
+               ("C","linguagem hermética e antirracionalista"),("D","foco exclusivo em temas urbanos industriais")],
+         correta="B", exp="O Romantismo brasileiro idealiza o amor, a natureza e cria o herói nacional, sobretudo no indianismo."),
+    dict(eixo="Literatura e Interpretação", dif=2, enunciado="\"Ela tem um coração de gelo\" é um exemplo de:",
+         alts=[("A","metonímia"),("B","metáfora"),("C","hipérbole"),("D","eufemismo")], correta="B",
+         exp="Há comparação implícita (coração comparado a algo frio, sem \"como\"), o que caracteriza a metáfora."),
+    dict(eixo="Literatura e Interpretação", dif=3, enunciado="A Semana de Arte Moderna de 1922 é associada a qual proposta estética?",
+         alts=[("A","retomar rigidamente as formas clássicas parnasianas"),
+               ("B","romper com o passado por meio de linguagem coloquial, verso livre e valorização da cultura nacional"),
+               ("C","imitar integralmente os modelos europeus românticos"),
+               ("D","abandonar completamente qualquer referência ao Brasil")],
+         correta="B", exp="O Modernismo de 1922 propôs ruptura com o passado, linguagem coloquial, verso livre e valorização do nacional."),
+    dict(eixo="Literatura e Interpretação", dif=4,
+         enunciado="Num romance narrado em terceira pessoa que revela pensamentos e sentimentos de vários personagens, o narrador é chamado de:",
+         alts=[("A","narrador-personagem"),("B","narrador onisciente"),("C","narrador testemunha"),("D","narrador limitado à primeira pessoa")],
+         correta="B", exp="Um narrador em 3ª pessoa que acessa a mente de vários personagens é onisciente."),
+    dict(eixo="Literatura e Interpretação", dif=5, enunciado="Em Dom Casmurro, de Machado de Assis, a ambiguidade central da obra está relacionada a:",
+         alts=[("A","a certeza da traição de Capitu, comprovada por provas concretas de Bentinho"),
+               ("B","a impossibilidade de o leitor saber com certeza se Capitu traiu Bentinho, pois o narrador não é confiável"),
+               ("C","a disputa de terras entre as famílias de Bentinho e Capitu"),
+               ("D","o conflito religioso entre Bentinho e o seminário")],
+         correta="B", exp="A obra é célebre justamente por deixar em aberto, via narrador não confiável, se Capitu realmente traiu Bentinho."),
+
+    # ---- Produção Textual e Coesão ----
+    dict(eixo="Produção Textual e Coesão", dif=1, enunciado="\"Estudou bastante; portanto, foi bem na prova.\" A palavra \"portanto\" estabelece relação de:",
+         alts=[("A","oposição"),("B","conclusão ou consequência"),("C","adição"),("D","comparação")], correta="B",
+         exp="\"Portanto\" é conectivo conclusivo, introduzindo a consequência do que foi dito antes."),
+    dict(eixo="Produção Textual e Coesão", dif=2, enunciado="\"Maria comprou um carro novo. Ela está muito feliz com ele.\" A que \"ele\" se refere?",
+         alts=[("A","a Maria"),("B","ao carro"),("C","à felicidade"),("D","a nada, é apenas estilístico")], correta="B",
+         exp="\"Ele\" retoma \"um carro novo\" por coesão referencial (anáfora)."),
+    dict(eixo="Produção Textual e Coesão", dif=3,
+         enunciado="Num parágrafo de desenvolvimento de uma dissertação-argumentativa, a estrutura mais recomendada é:",
+         alts=[("A","apenas uma opinião pessoal, sem justificativa"),
+               ("B","tópico frasal seguido de argumentação e, se possível, exemplificação"),
+               ("C","uma lista de frases soltas sem conexão"),("D","repetir a introdução com outras palavras")],
+         correta="B", exp="O parágrafo padrão de desenvolvimento apresenta um tópico frasal, argumenta e, quando possível, exemplifica."),
+    dict(eixo="Produção Textual e Coesão", dif=4,
+         enunciado="Em uma redação dissertativa-argumentativa no modelo ENEM, o registro linguístico esperado é:",
+         alts=[("A","informal, com gírias e abreviações"),("B","formal, seguindo a norma culta da língua"),
+               ("C","técnico-científico com jargões de uma área específica"),("D","poético, com muitas figuras de linguagem")],
+         correta="B", exp="O ENEM exige registro formal, dentro da norma culta, na redação dissertativa-argumentativa."),
+    dict(eixo="Produção Textual e Coesão", dif=5,
+         enunciado="\"Todo mundo sabe que essa política é ruim, então não precisa nem discutir.\" Esse trecho tem um problema argumentativo porque:",
+         alts=[("A","apresenta dados estatísticos em excesso"),
+               ("B","recorre ao senso comum (\"todo mundo sabe\") como se fosse prova suficiente, sem evidências"),
+               ("C","usa linguagem excessivamente técnica"),("D","não usa conectivos suficientes")],
+         correta="B", exp="Apelar ao senso comum sem apresentar evidências é uma falha argumentativa (apelo à opinião geral)."),
 ]
 
 
@@ -190,6 +303,38 @@ def run():
         else:
             print("Registro de professor já existe — pulando.")
 
+        # Bloco independente: cria uma segunda professora, de Português, e
+        # vincula à mesma turma — é o que prova, na demonstração, que o
+        # Diagnóstico Adaptativo e o Coordenador de Professores por IA
+        # funcionam com mais de uma disciplina ao mesmo tempo, não só
+        # Matemática (cada professor só vê o Diagnóstico Adaptativo na
+        # própria disciplina).
+        if db.execute("select count(*) c from usuarios where email = 'professor2@escolaa.com.br'").fetchone()["c"] == 0:
+            escola = db.execute("select id from escolas limit 1").fetchone()
+            turma = db.execute("select id from turmas limit 1").fetchone()
+            if escola and turma:
+                professora_uid = new_id()
+                db.execute(
+                    "insert into usuarios (id, escola_id, nome, email, senha_hash, papel) values (?,?,?,?,?,?)",
+                    (professora_uid, escola["id"], "Profa. Beatriz Nunes", "professor2@escolaa.com.br",
+                     hash_senha("123456"), "professor"),
+                )
+                professora_id = new_id()
+                db.execute(
+                    "insert into professores (id, usuario_id, disciplina) values (?,?,?)",
+                    (professora_id, professora_uid, "Português"),
+                )
+                db.execute(
+                    "insert into professor_turma (professor_id, turma_id) values (?,?)",
+                    (professora_id, turma["id"]),
+                )
+                print("Professora de Português de demonstração criada e vinculada à turma.")
+                print("  professor2@escolaa.com.br / 123456")
+            else:
+                print("Escola ou turma de demonstração não encontradas — pulando criação da professora de Português.")
+        else:
+            print("Professora de Português de demonstração já existe — pulando.")
+
         # Bloco independente: cadastro de inclusão de demonstração para a aluna
         # de demonstração, para o módulo já nascer com algo visível.
         if db.execute("select count(*) c from inclusao_cadastro").fetchone()["c"] == 0:
@@ -254,9 +399,13 @@ def run():
         else:
             print("Usuário de psicopedagoga já existe — pulando.")
 
-        if db.execute("select count(*) c from itens_banco").fetchone()["c"] == 0:
-            import json
-            for item in ITENS:
+        # Bancos de itens: cada disciplina é um bloco independente, gatilhado
+        # pela contagem de itens DAQUELA disciplina — não pela contagem geral
+        # de itens_banco. Assim, adicionar o banco de Português não fica
+        # bloqueado por Matemática já estar populada (e o mesmo vale para
+        # qualquer disciplina futura).
+        if db.execute("select count(*) c from itens_banco where disciplina = 'matematica'").fetchone()["c"] == 0:
+            for item in ITENS_MATEMATICA:
                 alternativas = [{"letra": l, "texto": t} for l, t in item["alts"]]
                 db.execute(
                     "insert into itens_banco (id, disciplina, eixo_bncc, dificuldade, enunciado, alternativas, correta, explicacao) "
@@ -264,9 +413,22 @@ def run():
                     (new_id(), "matematica", item["eixo"], item["dif"], item["enunciado"],
                      json.dumps(alternativas, ensure_ascii=False), item["correta"], item["exp"]),
                 )
-            print(f"{len(ITENS)} questões de Matemática cadastradas no banco de itens.")
+            print(f"{len(ITENS_MATEMATICA)} questões de Matemática cadastradas no banco de itens.")
         else:
-            print("Banco de itens já populado — pulando.")
+            print("Banco de itens de Matemática já populado — pulando.")
+
+        if db.execute("select count(*) c from itens_banco where disciplina = 'portugues'").fetchone()["c"] == 0:
+            for item in ITENS_PORTUGUES:
+                alternativas = [{"letra": l, "texto": t} for l, t in item["alts"]]
+                db.execute(
+                    "insert into itens_banco (id, disciplina, eixo_bncc, dificuldade, enunciado, alternativas, correta, explicacao) "
+                    "values (?,?,?,?,?,?,?,?)",
+                    (new_id(), "portugues", item["eixo"], item["dif"], item["enunciado"],
+                     json.dumps(alternativas, ensure_ascii=False), item["correta"], item["exp"]),
+                )
+            print(f"{len(ITENS_PORTUGUES)} questões de Português cadastradas no banco de itens.")
+        else:
+            print("Banco de itens de Português já populado — pulando.")
 
         db.commit()
 
