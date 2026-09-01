@@ -7,43 +7,59 @@
   <p>{{ resumo }}</p>
 </div>
 
+{% if diagnosticos_por_disciplina %}
+{% for slug, bloco in diagnosticos_por_disciplina.items() %}
 <div class="card">
-  <h2>Números da turma</h2>
+  <h2>Diagnóstico Adaptativo — {{ slug|disciplina }}</h2>
   <table>
     <tr><th></th><th>Alunos</th><th>Total da turma</th></tr>
     <tr>
-      <td>Diagnóstico de Matemática</td>
-      <td>{{ stats.alunos_com_diagnostico }}</td>
-      <td>{{ stats.total_alunos }}</td>
-    </tr>
-    <tr>
-      <td>Redação</td>
-      <td>{{ stats.alunos_com_redacao }}</td>
-      <td>{{ stats.total_alunos }}</td>
+      <td>Fizeram o diagnóstico</td>
+      <td>{{ bloco.alunos_com_diagnostico }}</td>
+      <td>{{ gerais.total_alunos }}</td>
     </tr>
   </table>
-  <p style="margin-top:14px;">
-    {% if stats.media_nivel_diag is not none %}
-    Nível médio de Matemática: <strong>{{ "%.1f"|format(stats.media_nivel_diag) }}/5</strong>.
-    {% endif %}
-    {% if stats.media_nota_redacao is not none %}
-    Nota média de Redação: <strong>{{ "%.0f"|format(stats.media_nota_redacao) }}/1000</strong>.
-    {% endif %}
-    {% if stats.alertas_pendentes %}
-    <span class="tag nivel-alto">{{ stats.alertas_pendentes }} alerta(s) pendente(s)</span>
-    {% else %}
-    <span class="tag nivel-baixo">Sem alertas pendentes</span>
-    {% endif %}
-  </p>
-  {% if stats.eixos_fracos %}
+  {% if bloco.media_nivel is not none %}
+  <p style="margin-top:14px;">Nível médio: <strong>{{ "%.1f"|format(bloco.media_nivel) }}/5</strong>.</p>
+  {% endif %}
+  {% if bloco.eixos_fracos %}
   <p><strong>Eixos da BNCC com mais dificuldade:</strong>
-    {% for eixo, taxa in stats.eixos_fracos %}
+    {% for eixo, taxa in bloco.eixos_fracos %}
     <span class="tag">{{ eixo }} — {{ (taxa * 100)|round|int }}%</span>{{ ", " if not loop.last }}
     {% endfor %}
   </p>
   {% endif %}
-  {% if stats.competencias_fracas %}
-  <p><strong>Competências do ENEM com mais dificuldade:</strong> {{ stats.competencias_fracas|join(", ") }}</p>
+</div>
+{% endfor %}
+{% else %}
+<div class="card">
+  <p>Ainda não há Diagnóstico Adaptativo disponível para nenhuma disciplina desta turma (ou, se você é
+  professor, ainda não há banco de itens para a sua disciplina).</p>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Redação e Radar</h2>
+  <table>
+    <tr><th></th><th>Alunos</th><th>Total da turma</th></tr>
+    <tr>
+      <td>Enviaram redação</td>
+      <td>{{ gerais.alunos_com_redacao }}</td>
+      <td>{{ gerais.total_alunos }}</td>
+    </tr>
+  </table>
+  <p style="margin-top:14px;">
+    {% if gerais.media_nota_redacao is not none %}
+    Nota média de Redação: <strong>{{ "%.0f"|format(gerais.media_nota_redacao) }}/1000</strong>.
+    {% endif %}
+    {% if gerais.alertas_pendentes %}
+    <span class="tag nivel-alto">{{ gerais.alertas_pendentes }} alerta(s) pendente(s)</span>
+    {% else %}
+    <span class="tag nivel-baixo">Sem alertas pendentes</span>
+    {% endif %}
+  </p>
+  {% if gerais.competencias_fracas %}
+  <p><strong>Competências do ENEM com mais dificuldade:</strong> {{ gerais.competencias_fracas|join(", ") }}</p>
   {% endif %}
 </div>
 
