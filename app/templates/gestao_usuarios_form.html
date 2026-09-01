@@ -20,6 +20,16 @@
       {% endfor %}
     </select>
 
+    {% if pode_definir_segmento %}
+    <label for="segmento" style="margin-top:16px;">Segmento (apenas para papel Coordenador — restringe o que essa pessoa vê no sistema; deixe em branco para acesso à escola inteira)</label>
+    <select name="segmento" id="segmento" style="width:100%; padding:10px; border:1px solid var(--borda); border-radius:6px; font-size:0.95rem;">
+      <option value="">Sem restrição (vê a escola inteira)</option>
+      {% for slug, rotulo in segmentos %}
+      <option value="{{ slug }}" {% if form.get('segmento') == slug %}selected{% endif %}>{{ rotulo }}</option>
+      {% endfor %}
+    </select>
+    {% endif %}
+
     <label for="turma_id" style="margin-top:16px;">Turma (obrigatório apenas para papel Aluno)</label>
     <select name="turma_id" id="turma_id" style="width:100%; padding:10px; border:1px solid var(--borda); border-radius:6px; font-size:0.95rem;">
       <option value="">Selecione...</option>
