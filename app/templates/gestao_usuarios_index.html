@@ -19,7 +19,10 @@
     <tr>
       <td>{{ u['nome'] }}</td>
       <td>{{ u['email'] }}</td>
-      <td>{{ papeis_label.get(u['papel'], u['papel']) }}</td>
+      <td>
+        {{ papeis_label.get(u['papel'], u['papel']) }}
+        {% if u['papel'] == 'coordenador' and u['segmento'] %}<span class="tag">{{ segmentos_label.get(u['segmento'], u['segmento']) }}</span>{% endif %}
+      </td>
       <td>{% if u['ativo'] %}<span style="color:var(--verde);">Ativo</span>{% else %}<span style="color:var(--vermelho);">Desativado</span>{% endif %}</td>
       <td><a href="{{ url_for('gestao_usuarios.editar', usuario_id=u['id']) }}">Gerenciar</a></td>
     </tr>
