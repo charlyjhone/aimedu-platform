@@ -63,6 +63,9 @@
       {% else %}
       <div class="busca-topo-vazio"></div>
       {% endif %}
+      {% if segmento_atual %}
+      <div class="selo-escola" title="Sua visão do sistema está restrita a este segmento">{{ segmento_atual }}</div>
+      {% endif %}
       {% if escola_atual %}
       <div class="selo-escola">{{ escola_atual }}</div>
       {% endif %}
