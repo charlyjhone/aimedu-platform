@@ -3,7 +3,7 @@ from flask import Flask, session
 
 from .db import init_db, get_db
 from . import auth
-from .auth import escopo_etapa
+from .auth import escopo_etapa, PAPEIS_DIRECAO
 from .modules import diagnostico, radar_coordenacao, bussola_vocacional, redacao, relatorios_familia, inclusao, gestao_usuarios, coordenador_professores, turmas
 from .modules.gestao_usuarios import PAPEIS_LABEL, SEGMENTOS_LABEL
 from .ai_engine import NOMES_DISCIPLINA
@@ -73,12 +73,16 @@ _MENU_COORDENACAO = [
     ]},
 ]
 
-# Direção usa o mesmo menu da coordenação, mais "Gestão de Turmas" — a tela
-# que cria/edita a estrutura de séries e turmas da escola. Só direção tem
-# esse item porque a estrutura de turmas atravessa todos os segmentos ao
-# mesmo tempo, enquanto uma coordenação é escopada a um segmento só (ver
-# escopo_etapa em app/auth.py); mostrar o link pra ela levaria a uma tela que
-# o próprio login_obrigatorio bloquearia em seguida.
+# Direção (e direção pedagógica — mesmo alcance, ver PAPEIS_DIRECAO em
+# app/auth.py) usa o mesmo menu da coordenação, mais "Gestão de Turmas" — a
+# tela que cria/edita a estrutura de séries e turmas da escola. Só quem tem
+# esse alcance vê esse item porque a estrutura de turmas atravessa todos os
+# segmentos ao mesmo tempo, enquanto uma coordenação é escopada a um
+# segmento só (ver escopo_etapa em app/auth.py); mostrar o link pra ela
+# levaria a uma tela que o próprio login_obrigatorio bloquearia em seguida.
+# Direção pedagógica enxerga o mesmo item e pode criar/editar série e turma
+# normalmente — só não vê os botões de exclusão dentro da tela (ver
+# app/modules/turmas.py:PAPEIS_EXCLUSAO_TURMAS).
 _MENU_DIRECAO = [
     {"nome": "Pedagógico", "itens": _MENU_COORDENACAO[0]["itens"] + [
         {"label": "Gestão de Turmas", "endpoint": "turmas.gestao", "icone": "layers"},
@@ -105,6 +109,7 @@ MENU_POR_PAPEL = {
     ],
     "coordenador": _MENU_COORDENACAO,
     "direcao": _MENU_DIRECAO,
+    "direcao_pedagogica": _MENU_DIRECAO,
     "psicopedagoga": [
         {"nome": "Pedagógico", "itens": [
             {"label": "Turmas", "endpoint": "turmas.index", "icone": "grid"},
