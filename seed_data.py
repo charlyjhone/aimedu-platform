@@ -3,11 +3,14 @@ Popula o banco local (SQLite) com dados de demonstração:
   - 1 escola ("COC MACAPÁ NORTE"), com a estrutura real completa de séries e
     turmas (Educação Infantil à 3ª série do EM — 16 séries / 27 turmas, ano
     letivo 2027), espelhando o que está em produção (Supabase)
-  - usuários de demonstração para todos os papéis — aluno, coordenador (uma
-    conta sem segmento + 4 contas de coordenadora, uma por segmento, pra
-    testar o escopo por etapa), 2 professores (Matemática e Português),
-    família, direção (admin), direção pedagógica (mesmo acesso da direção,
-    sem poder de excluir nada) e psicopedagoga (senha "123456" para todos)
+  - usuários de demonstração para a maioria dos papéis — aluno, coordenador
+    (uma conta sem segmento + 4 contas de coordenadora, uma por segmento,
+    pra testar o escopo por etapa), 2 professores (Matemática e Português),
+    família, direção (admin) e psicopedagoga (senha "123456" para todos).
+    O papel "direção pedagógica" (mesmo acesso da direção, sem poder de
+    excluir nada — ver PAPEIS_DIRECAO em app/auth.py) já existe no sistema,
+    mas propositalmente não tem conta semeada aqui: a conta real dessa
+    pessoa é criada manualmente pela tela de Gestão de Usuários.
   - banco de itens de Matemática: 5 eixos x 5 dificuldades = 25 questões
   - banco de itens de Português: 4 eixos x 5 dificuldades = 20 questões
     (prova de que o Diagnóstico Adaptativo e o Coordenador de Professores
@@ -454,25 +457,12 @@ def run():
                 print("Escola de demonstração não encontrada — pulando criação da direção.")
         else:
             print("Usuário de direção já existe — pulando.")
-          
-        # Bloco independente: cria a conta de direção pedagógica — mesmo
-        # alcance de acesso da direção (PAPEIS_DIRECAO em app/auth.py), mas
-        # sem nenhuma permissão de exclusão definitiva (nem conta de usuário,
-        # nem série/turma).
-        if db.execute("select count(*) c from usuarios where papel = 'direcao_pedagogica'").fetchone()["c"] == 0:
-            escola = db.execute("select id from escolas limit 1").fetchone()
-            if escola:
-                db.execute(
-                    "insert into usuarios (id, escola_id, nome, email, senha_hash, papel) values (?,?,?,?,?,?)",
-                    (new_id(), escola["id"], "Direção Pedagógica Escola A", "direcao-pedagogica@escolaa.com.br",
-                     hash_senha("123456"), "direcao_pedagogica"),
-                )
-                print("Usuário de direção pedagógica criado.")
-                print("  direcao-pedagogica@escolaa.com.br / 123456")
-            else:
-                print("Escola de demonstração não encontrada — pulando criação da direção pedagógica.")
-        else:
-            print("Usuário de direção pedagógica já existe — pulando.")
+
+        # Propositalmente NÃO há aqui um bloco de seed para 'direcao_pedagogica'
+        # — o papel já existe no schema/CHECK constraint e tem todo o acesso
+        # implementado (ver PAPEIS_DIRECAO em app/auth.py), mas a conta real
+        # dessa pessoa deve ser criada manualmente pela tela de Gestão de
+        # Usuários (com e-mail e senha próprios), não por este script.
 
         # Bloco independente: cria a conta de psicopedagoga — o papel
         # responsável por editar o cadastro de inclusão e o PEI dos alunos
