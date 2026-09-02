@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block titulo %}Gestão de Turmas — AIM.Edu{% endblock %}
+{% block conteudo %}
+<div class="card">
+  <h2>Gestão de Turmas</h2>
+  <p style="color:#666; font-size:0.85rem;">Estrutura de séries e turmas da escola, da Educação Infantil ao Ensino Médio. Só a direção cria ou altera essa estrutura — cada coordenação continua vendo só as turmas do próprio segmento.</p>
+  <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
+    <a class="botao" href="{{ url_for('turmas.nova_serie') }}">Nova série</a>
+    <a class="botao" href="{{ url_for('turmas.nova_turma') }}" style="background:#3a6b8a;">Nova turma</a>
+  </div>
+</div>
+
+{% if grupos %}
+{% for grupo in grupos %}
+<div class="card">
+  <h2>{{ grupo.serie['nome'] }} <span class="tag">{{ segmentos_label.get(grupo.serie['etapa'], grupo.serie['etapa']) }}</span></h2>
+  {% if grupo.turmas %}
+  <table>
+    <tr><th>Turma</th><th>Ano letivo</th><th>Alunos</th><th></th><th></th></tr>
+    {% for t in grupo.turmas %}
+    <tr>
+      <td>{{ t['nome'] }}</td>
+      <td>{{ t['ano_letivo'] }}</td>
+      <td>{{ t['total_alunos'] }}</td>
+      <td><a href="{{ url_for('turmas.editar_turma', turma_id=t['id']) }}">Editar</a></td>
+      <td>
+        <form method="post" action="{{ url_for('turmas.excluir_turma', turma_id=t['id']) }}" onsubmit="return confirm('Excluir a turma {{ t['nome'] }}?');" style="display:inline;">
+          <button type="submit" class="botao" style="background:var(--vermelho); padding:6px 12px; font-size:0.8rem;">Excluir</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p style="color:#666; font-size:0.85rem;">Nenhuma turma cadastrada nesta série ainda.</p>
+  {% endif %}
+  <div style="margin-top:14px; display:flex; gap:14px; align-items:center;">
+    <a href="{{ url_for('turmas.editar_serie', serie_id=grupo.serie['id']) }}">Editar série</a>
+    <form method="post" action="{{ url_for('turmas.excluir_serie', serie_id=grupo.serie['id']) }}" onsubmit="return confirm('Excluir a série {{ grupo.serie['nome'] }}?');">
+      <button type="submit" class="botao" style="background:var(--vermelho); padding:6px 12px; font-size:0.8rem;">Excluir série</button>
+    </form>
+  </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="card"><p>Nenhuma série cadastrada ainda.</p></div>
+{% endif %}
+{% endblock %}
