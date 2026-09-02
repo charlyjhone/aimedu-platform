@@ -27,12 +27,12 @@ mesma lógica de visibilidade por papel deste módulo, na rota /turmas/busca.
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 
 from ..db import get_db, new_id
-from ..auth import login_obrigatorio, usuario_logado, escopo_etapa
+from ..auth import login_obrigatorio, usuario_logado, escopo_etapa, PAPEIS_DIRECAO
 from .gestao_usuarios import SEGMENTOS_DISPONIVEIS, SEGMENTOS_LABEL
 
 bp = Blueprint("turmas", __name__, url_prefix="/turmas")
 
-PAPEIS_ACESSO = ("coordenador", "direcao", "professor", "psicopedagoga")
+PAPEIS_ACESSO = ("coordenador", "professor", "psicopedagoga") + PAPEIS_DIRECAO
 
 
 def _escola_id_atual():
@@ -60,7 +60,7 @@ def _turmas_visiveis(db):
     u = usuario_logado()
     escola_id = _escola_id_atual()
 
-    if u["papel"] in ("coordenador", "direcao", "psicopedagoga"):
+    if u["papel"] in ("coordenador", "psicopedagoga") or u["papel"] in PAPEIS_DIRECAO:
         segmento = escopo_etapa(u)
         if segmento:
             return db.execute(
@@ -102,10 +102,10 @@ def _links_do_aluno(papel, aluno_id, usuario_id):
     telas que já existem por aluno em vez de criar uma tela de perfil
     nova."""
     links = []
-    if papel in ("coordenador", "direcao"):
+    if papel == "coordenador" or papel in PAPEIS_DIRECAO:
         links.append(("Ver ficha (Radar)", url_for("radar_coordenacao.aluno", aluno_id=aluno_id)))
         links.append(("Gerenciar conta", url_for("gestao_usuarios.editar", usuario_id=usuario_id)))
-    if papel in ("professor", "psicopedagoga", "coordenador", "direcao"):
+    if papel in ("professor", "psicopedagoga", "coordenador") or papel in PAPEIS_DIRECAO:
         links.append(("Ficha de Inclusão", url_for("inclusao.ficha", aluno_id=aluno_id)))
     return links
 
@@ -154,7 +154,7 @@ def busca():
 
     linhas = []
     if q:
-        if u["papel"] in ("coordenador", "direcao", "psicopedagoga"):
+        if u["papel"] in ("coordenador", "psicopedagoga") or u["papel"] in PAPEIS_DIRECAO:
             segmento = escopo_etapa(u)
             if segmento:
                 linhas = db.execute(
@@ -194,19 +194,27 @@ def busca():
 
 
 # ---------------------------------------------------------------------------
-# Gestão de Turmas (estrutura de séries/turmas da escola) — só direção.
+# Gestão de Turmas (estrutura de séries/turmas da escola) — só direção e
+# direção pedagógica.
 #
-# Só a direção mexe na ESTRUTURA (criar/editar/excluir série e turma), de
-# propósito: uma coordenação já é escopada por segmento (ver escopo_etapa),
-# então criar turma é uma decisão que atravessa a escola inteira (ex.: mudar
-# quantas turmas o 6º ano tem afeta a organização da escola toda, não só o
-# segmento de uma coordenação). Isso não precisa de um seletor de escola — a
-# rota já opera só sobre a escola do usuário logado (_escola_id_atual()),
-# então funciona sem nenhuma mudança quando uma segunda escola existir: a
-# direção da Escola B logaria com sua própria conta e gerenciaria só as
-# turmas dela.
+# Só quem tem alcance de direção mexe na ESTRUTURA (criar/editar série e
+# turma), de propósito: uma coordenação já é escopada por segmento (ver
+# escopo_etapa), então criar turma é uma decisão que atravessa a escola
+# inteira (ex.: mudar quantas turmas o 6º ano tem afeta a organização da
+# escola toda, não só o segmento de uma coordenação). Isso não precisa de um
+# seletor de escola — a rota já opera só sobre a escola do usuário logado
+# (_escola_id_atual()), então funciona sem nenhuma mudança quando uma
+# segunda escola existir.
+#
+# EXCLUIR é diferente de criar/editar: só "direcao" pode excluir série ou
+# turma (PAPEIS_EXCLUSAO_TURMAS abaixo, não PAPEIS_GESTAO_TURMAS) — direção
+# pedagógica tem o mesmo acesso à tela e pode criar/editar normalmente, mas
+# nunca vê nem consegue chamar as rotas de exclusão (ver gestao(), que
+# manda pode_excluir=False pra ela no template, e os decorators de
+# excluir_serie()/excluir_turma() abaixo).
 # ---------------------------------------------------------------------------
-PAPEIS_GESTAO_TURMAS = ("direcao",)
+PAPEIS_GESTAO_TURMAS = PAPEIS_DIRECAO
+PAPEIS_EXCLUSAO_TURMAS = ("direcao",)
 
 
 def _series_com_turmas(db, escola_id):
@@ -245,7 +253,10 @@ def _turma_pode_excluir(db, turma_id):
 def gestao():
     db = get_db()
     grupos = _series_com_turmas(db, _escola_id_atual())
-    return render_template("turmas_gestao.html", grupos=grupos, segmentos_label=SEGMENTOS_LABEL)
+    pode_excluir = usuario_logado()["papel"] in PAPEIS_EXCLUSAO_TURMAS
+    return render_template(
+        "turmas_gestao.html", grupos=grupos, segmentos_label=SEGMENTOS_LABEL, pode_excluir=pode_excluir
+    )
 
 
 @bp.route("/gestao/serie/nova", methods=["GET", "POST"])
@@ -326,7 +337,7 @@ def editar_serie(serie_id):
 
 
 @bp.route("/gestao/serie/<serie_id>/excluir", methods=["POST"])
-@login_obrigatorio(papeis=PAPEIS_GESTAO_TURMAS)
+@login_obrigatorio(papeis=PAPEIS_EXCLUSAO_TURMAS)
 def excluir_serie(serie_id):
     db = get_db()
     escola_id = _escola_id_atual()
@@ -428,7 +439,7 @@ def editar_turma(turma_id):
 
 
 @bp.route("/gestao/turma/<turma_id>/excluir", methods=["POST"])
-@login_obrigatorio(papeis=PAPEIS_GESTAO_TURMAS)
+@login_obrigatorio(papeis=PAPEIS_EXCLUSAO_TURMAS)
 def excluir_turma(turma_id):
     db = get_db()
     escola_id = _escola_id_atual()
