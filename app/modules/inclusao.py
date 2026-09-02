@@ -7,7 +7,7 @@ necessidade, se há laudo formal, quais adaptações usar em sala/avaliações
 e o apoio especializado envolvido (ex.: AEE, acompanhante terapêutico).
 Quem dá aula para o aluno pode consultar antes de planejar uma aula ou uma
 prova; quem cria ou edita o cadastro é a psicopedagoga (a responsável por
-esse trabalho no dia a dia) ou coordenação/direção.
+esse trabalho no dia a dia) ou coordenação/direção (incluindo direção pedagógica).
 
 Fase 2 (adicionada depois, também neste arquivo): o PEI (Plano Educacional
 Individualizado) completo — metas pedagógicas específicas por aluno, cada
@@ -32,14 +32,17 @@ from datetime import datetime, timezone
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 
 from ..db import get_db, new_id
-from ..auth import login_obrigatorio, usuario_logado, escopo_etapa
+from ..auth import login_obrigatorio, usuario_logado, escopo_etapa, PAPEIS_DIRECAO
 
 bp = Blueprint("inclusao", __name__, url_prefix="/inclusao")
 
 # Quem edita o cadastro de inclusão e o PEI (cria/atualiza) — psicopedagoga é
-# a responsável direta por esse trabalho; coordenação/direção mantêm acesso
-# de supervisão. Professor nunca entra aqui, só nos papéis de leitura abaixo.
-PAPEIS_EDITOR_INCLUSAO = ("psicopedagoga", "coordenador", "direcao")
+# a responsável direta por esse trabalho; coordenação/direção/direção
+# pedagógica mantêm acesso de supervisão (não há exclusão neste módulo, só
+# criar/atualizar, então direção pedagógica participa por igual, sem
+# restrição nenhuma). Professor nunca entra aqui, só nos papéis de leitura
+# abaixo.
+PAPEIS_EDITOR_INCLUSAO = ("psicopedagoga", "coordenador") + PAPEIS_DIRECAO
 # Quem enxerga a tela (edição + leitura) — o professor é o único que só lê.
 PAPEIS_LEITURA_INCLUSAO = ("professor",) + PAPEIS_EDITOR_INCLUSAO
 
@@ -87,7 +90,7 @@ def _alunos_visiveis(db):
     alunos daquele segmento. Professor só os alunos das turmas em que dá
     aula (via professor_turma)."""
     u = usuario_logado()
-    if u["papel"] in ("direcao", "psicopedagoga") or (u["papel"] == "coordenador" and not escopo_etapa(u)):
+    if u["papel"] == "psicopedagoga" or u["papel"] in PAPEIS_DIRECAO or (u["papel"] == "coordenador" and not escopo_etapa(u)):
         return db.execute(
             "select al.id, us.nome as nome, t.nome as turma_nome, al.turma_id "
             "from alunos al "
