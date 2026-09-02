@@ -98,7 +98,17 @@ create table if not exists diagnosticos (
     iniciado_em text not null default (datetime('now')),
     finalizado_em text,
     nivel_final real,
-    resumo_ia text
+    resumo_ia text,
+    -- Loop de validação do professor: todo diagnóstico finalizado nasce
+    -- 'aguardando_revisao' e só conta como oficial para os painéis da
+    -- coordenação e o relatório da família depois que o professor da
+    -- disciplina (ou coordenação/direção/direção pedagógica, em cobertura)
+    -- confere o nível calculado — e pode ajustá-lo — em
+    -- coordenador_professores.revisar_diagnostico(). Ver PAPEIS_DIRECAO em
+    -- app/auth.py para quem tem esse acesso de supervisão.
+    status text not null default 'aguardando_revisao' check (status in ('aguardando_revisao', 'revisado')),
+    revisado_em text,
+    revisado_por_usuario_id text references usuarios(id)
 );
 
 create table if not exists diagnostico_respostas (
