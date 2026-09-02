@@ -13,6 +13,11 @@ na conversa.
 Os níveis de acesso, na prática:
 - Direção ("admin"): acesso completo — cria e edita qualquer papel, e é a
   única que pode excluir uma conta definitivamente (ver abaixo).
+- Direção Pedagógica: mesmo acesso completo da direção (cria e edita
+  qualquer papel, define segmento de coordenador etc. — ver PAPEIS_DIRECAO
+  em app/auth.py) — a única coisa que ela NÃO pode fazer é excluir uma conta
+  definitivamente. A rota excluir() abaixo continua checando só "direcao",
+  de propósito, para essa conta nunca ganhar esse poder.
 - Coordenação: pode criar e editar aluno, professor, família e
   psicopedagoga — não pode criar nem editar outro coordenador nem uma conta
   de direção (evita que um coordenador se autopromova ou mexa em contas
@@ -65,7 +70,7 @@ import io
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, Response
 
 from ..db import get_db, new_id
-from ..auth import login_obrigatorio, usuario_logado, hash_senha, escopo_etapa
+from ..auth import login_obrigatorio, usuario_logado, hash_senha, escopo_etapa, PAPEIS_DIRECAO
 
 bp = Blueprint("gestao_usuarios", __name__, url_prefix="/usuarios")
 
@@ -74,6 +79,7 @@ PAPEIS_LABEL = {
     "professor": "Professor",
     "coordenador": "Coordenador",
     "direcao": "Direção (admin)",
+    "direcao_pedagogica": "Direção Pedagógica",
     "familia": "Família",
     "psicopedagoga": "Psicopedagoga",
 }
@@ -124,7 +130,7 @@ def _escola_id_atual():
 
 
 def _pode_gerenciar_papel(papel_ator: str, papel_alvo: str) -> bool:
-    if papel_ator == "direcao":
+    if papel_ator in PAPEIS_DIRECAO:
         return True
     return papel_alvo in ("aluno", "professor", "familia", "psicopedagoga")
 
@@ -297,7 +303,7 @@ def _usuarios_visiveis(db):
 
 
 @bp.route("/")
-@login_obrigatorio(papeis=["coordenador", "direcao"])
+@login_obrigatorio(papeis=["coordenador", "direcao", "direcao_pedagogica"])
 def index():
     db = get_db()
     usuarios = _usuarios_visiveis(db)
@@ -307,14 +313,14 @@ def index():
 
 
 @bp.route("/novo", methods=["GET", "POST"])
-@login_obrigatorio(papeis=["coordenador", "direcao"])
+@login_obrigatorio(papeis=["coordenador", "direcao", "direcao_pedagogica"])
 def novo():
     db = get_db()
     escola_id = _escola_id_atual()
     ator = usuario_logado()
     papel_ator = ator["papel"]
     segmento_ator = escopo_etapa(ator)
-    pode_definir_segmento = papel_ator == "direcao"
+    pode_definir_segmento = papel_ator in PAPEIS_DIRECAO
     papeis_disponiveis = {p: rotulo for p, rotulo in PAPEIS_LABEL.items() if _pode_gerenciar_papel(papel_ator, p)}
     turmas = _turmas_da_escola(db, segmento_ator)
     turma_ids_permitidos = {t["id"] for t in turmas}
@@ -405,7 +411,7 @@ def novo():
 
 
 @bp.route("/<usuario_id>")
-@login_obrigatorio(papeis=["coordenador", "direcao"])
+@login_obrigatorio(papeis=["coordenador", "direcao", "direcao_pedagogica"])
 def editar(usuario_id):
     db = get_db()
     ator = usuario_logado()
@@ -436,8 +442,10 @@ def editar(usuario_id):
                 ).fetchall()
             ]
 
+    # Exclusão continua checando só "direcao" (nunca PAPEIS_DIRECAO) — é a
+    # única ação que a direção pedagógica não tem, de propósito.
     pode_excluir = ator["papel"] == "direcao" and alvo["id"] != ator["id"]
-    pode_definir_segmento = ator["papel"] == "direcao" and alvo["papel"] == "coordenador"
+    pode_definir_segmento = ator["papel"] in PAPEIS_DIRECAO and alvo["papel"] == "coordenador"
 
     return render_template(
         "gestao_usuarios_editar.html", alvo=alvo, turmas=turmas, turma_atual_id=turma_atual_id,
@@ -448,7 +456,7 @@ def editar(usuario_id):
 
 
 @bp.route("/<usuario_id>/salvar", methods=["POST"])
-@login_obrigatorio(papeis=["coordenador", "direcao"])
+@login_obrigatorio(papeis=["coordenador", "direcao", "direcao_pedagogica"])
 def salvar(usuario_id):
     db = get_db()
     ator = usuario_logado()
@@ -469,7 +477,7 @@ def salvar(usuario_id):
 
     db.execute("update usuarios set ativo = ? where id = ?", (ativo, usuario_id))
 
-    if alvo["papel"] == "coordenador" and ator["papel"] == "direcao":
+    if alvo["papel"] == "coordenador" and ator["papel"] in PAPEIS_DIRECAO:
         segmento_novo = request.form.get("segmento") or None
         if segmento_novo and segmento_novo not in SEGMENTOS_LABEL:
             flash("Segmento inválido — selecione uma opção da lista.", "erro")
@@ -514,7 +522,7 @@ def salvar(usuario_id):
 
 
 @bp.route("/<usuario_id>/redefinir-senha", methods=["POST"])
-@login_obrigatorio(papeis=["coordenador", "direcao"])
+@login_obrigatorio(papeis=["coordenador", "direcao", "direcao_pedagogica"])
 def redefinir_senha(usuario_id):
     db = get_db()
     alvo = db.execute(
@@ -623,7 +631,7 @@ def perfil():
 
 
 @bp.route("/importar/alunos/modelo.csv")
-@login_obrigatorio(papeis=["coordenador", "direcao"])
+@login_obrigatorio(papeis=["coordenador", "direcao", "direcao_pedagogica"])
 def modelo_csv_alunos():
     conteudo = "﻿nome,email,turma\n"
     return Response(
@@ -633,7 +641,7 @@ def modelo_csv_alunos():
 
 
 @bp.route("/importar/professores/modelo.csv")
-@login_obrigatorio(papeis=["coordenador", "direcao"])
+@login_obrigatorio(papeis=["coordenador", "direcao", "direcao_pedagogica"])
 def modelo_csv_professores():
     conteudo = "﻿nome,email,disciplina,turmas\n"
     return Response(
@@ -643,7 +651,7 @@ def modelo_csv_professores():
 
 
 @bp.route("/importar/alunos", methods=["GET", "POST"])
-@login_obrigatorio(papeis=["coordenador", "direcao"])
+@login_obrigatorio(papeis=["coordenador", "direcao", "direcao_pedagogica"])
 def importar_alunos():
     db = get_db()
     escola_id = _escola_id_atual()
@@ -714,7 +722,7 @@ def importar_alunos():
 
 
 @bp.route("/importar/professores", methods=["GET", "POST"])
-@login_obrigatorio(papeis=["coordenador", "direcao"])
+@login_obrigatorio(papeis=["coordenador", "direcao", "direcao_pedagogica"])
 def importar_professores():
     db = get_db()
     escola_id = _escola_id_atual()
