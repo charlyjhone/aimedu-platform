@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block titulo %}Revisar diagnóstico — AIM.Edu{% endblock %}
+{% block conteudo %}
+
+<div class="card">
+  <h2>Revisar diagnóstico — {{ diag['aluno_nome'] }}</h2>
+  <p style="color:#666; font-size:0.85rem;">
+    Turma: {{ diag['turma_nome'] }} · Disciplina: {{ diag['disciplina']|disciplina }} ·
+    Finalizado em {{ diag['finalizado_em']|data }}
+  </p>
+</div>
+
+<div class="card">
+  <h2>Desempenho por eixo</h2>
+  {% if eixos %}
+  {% for e in eixos %}
+    {% set taxa = (e['acertos'] / e['total']) if e['total'] else 0 %}
+    <div class="eixo-row" style="margin-bottom:8px;">
+      {{ e['eixo'] or 'geral' }} — {{ e['acertos'] }}/{{ e['total'] }} ({{ (taxa*100)|round|int }}%)
+      <div class="barra" style="max-width:240px;"><div style="width:{{ taxa*100 }}%;"></div></div>
+    </div>
+  {% endfor %}
+  {% else %}
+  <p>Sem respostas registradas para este diagnóstico.</p>
+  {% endif %}
+
+  {% if diag['resumo_ia'] %}
+  <h2>Resumo</h2>
+  <p>{{ diag['resumo_ia'] }}</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Confirmar</h2>
+  <p style="color:#666; font-size:0.85rem;">
+    O motor adaptativo calculou o nível <strong>{{ diag['nivel_final']|round(1) if diag['nivel_final'] is not none else '—' }}/5</strong>.
+    Confirme como está, ou ajuste o valor antes de confirmar.
+  </p>
+  <form method="post">
+    <label>Nível final (1 a 5)
+      <input type="number" name="nivel_final" min="1" max="5" step="0.1"
+             value="{{ diag['nivel_final']|round(1) if diag['nivel_final'] is not none else 3 }}" required>
+    </label>
+    <div style="margin-top:14px;">
+      <button type="submit" class="botao">Confirmar revisão</button>
+    </div>
+  </form>
+</div>
+
+<p><a href="{{ url_for('coordenador_professores.pendencias') }}">&larr; Voltar às pendências</a></p>
+
+{% endblock %}
