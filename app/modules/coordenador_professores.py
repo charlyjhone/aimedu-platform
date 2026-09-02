@@ -41,7 +41,7 @@ import unicodedata
 from flask import Blueprint, render_template, redirect, url_for, request, flash
 
 from ..db import get_db, new_id
-from ..auth import login_obrigatorio, usuario_logado, escopo_etapa
+from ..auth import login_obrigatorio, usuario_logado, escopo_etapa, PAPEIS_DIRECAO
 from ..ai_engine import (
     resumo_desempenho_turma,
     sugestoes_pedagogicas_turma,
@@ -52,8 +52,8 @@ from ..ai_engine import (
 
 bp = Blueprint("coordenador_professores", __name__, url_prefix="/professores/coordenador-ia")
 
-PAPEIS_ACESSO = ("professor", "coordenador", "direcao")
-PAPEIS_DUVIDAS = ("professor", "coordenador", "direcao", "psicopedagoga")
+PAPEIS_ACESSO = ("professor", "coordenador") + PAPEIS_DIRECAO
+PAPEIS_DUVIDAS = ("professor", "coordenador", "psicopedagoga") + PAPEIS_DIRECAO
 
 LIMIAR_MINIMO_EIXO = 2  # só considera um eixo "fraco" se já foram respondidas pelo menos N questões dele
 LIMIAR_TAXA_EIXO_FRACO = 0.7  # eixo só entra como "fraco" se a taxa de acerto for menor que isso
@@ -156,7 +156,7 @@ def _turma_da_escola(db, turma_id, escola_id, segmento=None):
 
 
 def _professor_pode_ver_turma(db, usuario, turma_id):
-    if usuario["papel"] in ("coordenador", "direcao"):
+    if usuario["papel"] == "coordenador" or usuario["papel"] in PAPEIS_DIRECAO:
         return _turma_da_escola(db, turma_id, usuario["escola_id"], escopo_etapa(usuario)) is not None
     if usuario["papel"] == "professor":
         professor = _professor_do_usuario(db, usuario["id"])
@@ -358,7 +358,7 @@ def duvidas():
 
 
 @bp.route("/relatorio-professores")
-@login_obrigatorio(papeis=["coordenador", "direcao"])
+@login_obrigatorio(papeis=["coordenador"] + list(PAPEIS_DIRECAO))
 def relatorio_professores():
     db = get_db()
     escola_id = _escola_id_atual()
