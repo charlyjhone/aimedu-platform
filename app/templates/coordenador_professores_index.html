@@ -13,7 +13,10 @@
     dos professores às ferramentas do sistema.
     {% endif %}
   </p>
-  <p><a class="botao" href="{{ url_for('coordenador_professores.duvidas') }}">Tirar uma dúvida com a IA</a></p>
+  <p>
+    <a class="botao" href="{{ url_for('coordenador_professores.duvidas') }}">Tirar uma dúvida com a IA</a>
+    <a class="botao" style="background:#3a6b8a;" href="{{ url_for('coordenador_professores.pendencias') }}">Diagnósticos aguardando revisão</a>
+  </p>
 </div>
 
 <div class="card">
