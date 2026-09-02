@@ -48,13 +48,14 @@ create table if not exists usuarios (
     nome text not null,
     email text not null unique,
     senha_hash text not null,
-    papel text not null check (papel in ('aluno','professor','coordenador','direcao','familia','psicopedagoga')),
+    papel text not null check (papel in ('aluno','professor','coordenador','direcao','direcao_pedagogica','familia','psicopedagoga')),
     ativo integer not null default 1,
     -- segmento: só usado quando papel = 'coordenador' — reaproveita os mesmos
     -- valores de series.etapa ('infantil'|'fund1'|'fund2'|'medio') pra dizer a
     -- qual etapa esse coordenador está restrito. NULL = sem restrição (usado
-    -- também por direção/psicopedagoga, que sempre enxergam tudo independente
-    -- deste campo — ver escopo_etapa() em app/auth.py).
+    -- também por direção/direção pedagógica/psicopedagoga, que sempre
+    -- enxergam tudo independente deste campo — ver escopo_etapa() e
+    -- PAPEIS_DIRECAO em app/auth.py).
     segmento text,
     criado_em text not null default (datetime('now'))
 );
