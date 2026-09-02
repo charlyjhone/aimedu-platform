@@ -21,7 +21,7 @@ a coordenação, sem precisar conhecer os outros módulos.
 from flask import Blueprint, render_template, redirect, url_for, request, flash
 
 from ..db import get_db
-from ..auth import login_obrigatorio, usuario_logado, escopo_etapa
+from ..auth import login_obrigatorio, usuario_logado, escopo_etapa, PAPEIS_DIRECAO
 
 bp = Blueprint("radar_coordenacao", __name__, url_prefix="/coordenacao/radar")
 
@@ -80,7 +80,7 @@ def _contagem_por_nivel(db, escola_id, segmento=None):
 
 
 @bp.route("/")
-@login_obrigatorio(papeis=["coordenador", "direcao"])
+@login_obrigatorio(papeis=["coordenador"] + list(PAPEIS_DIRECAO))
 def index():
     db = get_db()
     escola_id = _escola_id_atual()
@@ -136,7 +136,7 @@ def index():
 
 
 @bp.route("/<alerta_id>/marcar", methods=["POST"])
-@login_obrigatorio(papeis=["coordenador", "direcao"])
+@login_obrigatorio(papeis=["coordenador"] + list(PAPEIS_DIRECAO))
 def marcar(alerta_id):
     db = get_db()
     escola_id = _escola_id_atual()
@@ -178,7 +178,7 @@ def marcar(alerta_id):
 
 
 @bp.route("/aluno/<aluno_id>")
-@login_obrigatorio(papeis=["coordenador", "direcao"])
+@login_obrigatorio(papeis=["coordenador"] + list(PAPEIS_DIRECAO))
 def aluno(aluno_id):
     db = get_db()
     escola_id = _escola_id_atual()
