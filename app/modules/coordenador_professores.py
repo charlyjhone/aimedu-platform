@@ -19,6 +19,15 @@ todo o projeto, hoje por regras locais):
      adesão de cada professor às ferramentas (não desempenho dos alunos em
      si), turma por turma, com o Diagnóstico Adaptativo já filtrado pela
      disciplina de cada professor.
+  5. Loop de validação do Diagnóstico Adaptativo — todo diagnóstico que o
+     aluno finaliza nasce com status "aguardando_revisao" (ver app/db.py) e
+     só entra nas contas oficiais (os blocos acima, o painel da coordenação
+     em auth.painel() e o relatório da família) depois que o professor da
+     disciplina abre o diagnóstico, confere o nível calculado pelo motor
+     adaptativo e confirma — podendo ajustar o nível manualmente antes de
+     confirmar, se achar que o cálculo não reflete o aluno. Coordenação/
+     direção/direção pedagógica também revisam, em cobertura, qualquer
+     diagnóstico da escola (ver PAPEIS_ACESSO abaixo).
 
 Sobre disciplinas: o Diagnóstico Adaptativo (app.modules.diagnostico) só
 existe para as disciplinas que já têm itens cadastrados em itens_banco (hoje
@@ -37,6 +46,7 @@ app.modules.diagnostico, redacao.py e radar_coordenacao.py já preenchem,
 prova de que é um projeto único e interligado, não um módulo isolado.
 """
 import unicodedata
+from datetime import datetime, timezone
 
 from flask import Blueprint, render_template, redirect, url_for, request, flash
 
@@ -177,12 +187,14 @@ def _disciplinas_disponiveis(db):
 
 
 def _disciplinas_com_diagnostico_na_turma(db, turma_id):
-    """Disciplinas em que pelo menos um aluno da turma já finalizou um
-    Diagnóstico Adaptativo — é isso que decide quantos blocos a coordenação
-    vê na página da turma."""
+    """Disciplinas em que pelo menos um aluno da turma já tem um Diagnóstico
+    Adaptativo finalizado E REVISADO pelo professor — é isso que decide
+    quantos blocos a coordenação vê na página da turma. Um diagnóstico ainda
+    'aguardando_revisao' não entra aqui (ver PAPEIS_ACESSO e o loop de
+    validação no topo do arquivo)."""
     linhas = db.execute(
         "select distinct d.disciplina from diagnosticos d join alunos a on a.id = d.aluno_id "
-        "where a.turma_id = ? and d.finalizado_em is not null",
+        "where a.turma_id = ? and d.finalizado_em is not null and d.status = 'revisado'",
         (turma_id,),
     ).fetchall()
     return [linha["disciplina"] for linha in linhas]
@@ -233,11 +245,15 @@ def _stats_diagnostico_turma(db, turma_id, disciplina):
     """Números do Diagnóstico Adaptativo de UMA disciplina, para os alunos
     de uma turma: quantos já fizeram, nível médio e eixos da BNCC mais
     fracos (a mesma conta que antes misturava todas as disciplinas — agora
-    sempre filtrada por 'disciplina')."""
+    sempre filtrada por 'disciplina'). Só entram diagnósticos com
+    status = 'revisado' — é o que faz esse bloco (usado tanto pelo professor
+    quanto pela coordenação) refletir só dado já conferido pelo professor,
+    nunca um cálculo do motor adaptativo ainda não validado."""
     diag = db.execute(
         "select count(distinct a.id) alunos_com_diag, avg(d.nivel_final) media_nivel "
         "from alunos a join diagnosticos d on d.aluno_id = a.id "
-        "where a.turma_id = ? and d.disciplina = ? and d.finalizado_em is not null",
+        "where a.turma_id = ? and d.disciplina = ? and d.finalizado_em is not null "
+        "and d.status = 'revisado'",
         (turma_id, disciplina),
     ).fetchone()
 
@@ -248,7 +264,7 @@ def _stats_diagnostico_turma(db, turma_id, disciplina):
         "join diagnosticos d on d.aluno_id = a.id "
         "join diagnostico_respostas dr on dr.diagnostico_id = d.id "
         "join itens_banco i on i.id = dr.item_id "
-        "where a.turma_id = ? and d.disciplina = ? "
+        "where a.turma_id = ? and d.disciplina = ? and d.status = 'revisado' "
         "group by i.eixo_bncc",
         (turma_id, disciplina),
     ).fetchall()
@@ -394,3 +410,133 @@ def relatorio_professores():
         relatorios.append({"professor": prof, "turmas_info": turmas_info, "resumo": resumo})
 
     return render_template("coordenador_professores_relatorio.html", relatorios=relatorios)
+
+
+def _diagnosticos_pendentes(db, u):
+    """Diagnósticos finalizados e ainda 'aguardando_revisao' que o usuário
+    logado pode revisar: um professor só vê os da PRÓPRIA disciplina, nas
+    turmas em que dá aula; coordenação/direção/direção pedagógica veem os de
+    qualquer turma dentro do próprio alcance (escola inteira, ou só o
+    segmento, se for coordenador escopado) — mesma regra de visibilidade de
+    turma já usada no resto do módulo."""
+    if u["papel"] == "professor":
+        professor = _professor_do_usuario(db, u["id"])
+        if not professor:
+            return []
+        disciplina_slug = _normalizar_disciplina(professor["disciplina"])
+        turma_ids = [t["id"] for t in _turmas_do_professor(db, professor["id"])]
+        if not turma_ids or not disciplina_slug:
+            return []
+        placeholders = ",".join("?" for _ in turma_ids)
+        return db.execute(
+            f"select d.id, d.disciplina, d.finalizado_em, d.nivel_final, "
+            f"us.nome as aluno_nome, t.nome as turma_nome "
+            f"from diagnosticos d "
+            f"join alunos a on a.id = d.aluno_id "
+            f"join usuarios us on us.id = a.usuario_id "
+            f"join turmas t on t.id = a.turma_id "
+            f"where a.turma_id in ({placeholders}) and d.disciplina = ? "
+            f"and d.finalizado_em is not null and d.status = 'aguardando_revisao' "
+            f"order by d.finalizado_em",
+            (*turma_ids, disciplina_slug),
+        ).fetchall()
+
+    escola_id = _escola_id_atual()
+    segmento = escopo_etapa(u)
+    turma_ids = [t["id"] for t in _turmas_da_escola(db, escola_id, segmento)]
+    if not turma_ids:
+        return []
+    placeholders = ",".join("?" for _ in turma_ids)
+    return db.execute(
+        f"select d.id, d.disciplina, d.finalizado_em, d.nivel_final, "
+        f"us.nome as aluno_nome, t.nome as turma_nome "
+        f"from diagnosticos d "
+        f"join alunos a on a.id = d.aluno_id "
+        f"join usuarios us on us.id = a.usuario_id "
+        f"join turmas t on t.id = a.turma_id "
+        f"where a.turma_id in ({placeholders}) "
+        f"and d.finalizado_em is not null and d.status = 'aguardando_revisao' "
+        f"order by d.finalizado_em",
+        tuple(turma_ids),
+    ).fetchall()
+
+
+def _diagnostico_revisavel(db, u, diagnostico_id):
+    """Confere se o usuário logado pode revisar ESSE diagnóstico específico
+    — mesma regra de _diagnosticos_pendentes, mas para um só, usada tanto
+    pra abrir a tela de revisão quanto pra validar o POST de confirmação."""
+    diag = db.execute(
+        "select d.*, a.turma_id as turma_id, us.nome as aluno_nome, t.nome as turma_nome "
+        "from diagnosticos d "
+        "join alunos a on a.id = d.aluno_id "
+        "join usuarios us on us.id = a.usuario_id "
+        "join turmas t on t.id = a.turma_id "
+        "where d.id = ?",
+        (diagnostico_id,),
+    ).fetchone()
+    if not diag:
+        return None
+
+    if u["papel"] == "professor":
+        professor = _professor_do_usuario(db, u["id"])
+        if not professor:
+            return None
+        mesma_disciplina = _normalizar_disciplina(professor["disciplina"]) == diag["disciplina"]
+        leciona_a_turma = db.execute(
+            "select 1 from professor_turma where professor_id = ? and turma_id = ?",
+            (professor["id"], diag["turma_id"]),
+        ).fetchone() is not None
+        return diag if (mesma_disciplina and leciona_a_turma) else None
+
+    # Coordenação/direção/direção pedagógica: mesma regra de alcance por
+    # turma usada no resto do módulo (escola inteira, ou só o segmento).
+    dentro_do_alcance = _turma_da_escola(db, diag["turma_id"], _escola_id_atual(), escopo_etapa(u)) is not None
+    return diag if dentro_do_alcance else None
+
+
+@bp.route("/diagnosticos-pendentes")
+@login_obrigatorio(papeis=PAPEIS_ACESSO)
+def pendencias():
+    db = get_db()
+    pendentes = _diagnosticos_pendentes(db, usuario_logado())
+    return render_template("coordenador_professores_pendencias.html", pendentes=pendentes)
+
+
+@bp.route("/diagnostico/<diagnostico_id>/revisar", methods=["GET", "POST"])
+@login_obrigatorio(papeis=PAPEIS_ACESSO)
+def revisar_diagnostico(diagnostico_id):
+    db = get_db()
+    u = usuario_logado()
+    diag = _diagnostico_revisavel(db, u, diagnostico_id)
+    if not diag:
+        flash("Diagnóstico não encontrado ou fora do seu acesso.", "erro")
+        return redirect(url_for("coordenador_professores.pendencias"))
+    if diag["finalizado_em"] is None:
+        flash("Este diagnóstico ainda está em andamento — só dá para revisar depois que o aluno finalizar.", "erro")
+        return redirect(url_for("coordenador_professores.pendencias"))
+
+    if request.method == "POST":
+        bruto = request.form.get("nivel_final", "").strip().replace(",", ".")
+        try:
+            novo_nivel = float(bruto)
+        except ValueError:
+            novo_nivel = diag["nivel_final"]
+        novo_nivel = max(1.0, min(5.0, novo_nivel))
+
+        db.execute(
+            "update diagnosticos set status = 'revisado', revisado_em = ?, "
+            "revisado_por_usuario_id = ?, nivel_final = ? where id = ?",
+            (datetime.now(timezone.utc).isoformat(), u["id"], novo_nivel, diagnostico_id),
+        )
+        db.commit()
+        flash(f"Diagnóstico de {diag['aluno_nome']} revisado e confirmado.", "ok")
+        return redirect(url_for("coordenador_professores.pendencias"))
+
+    eixos = db.execute(
+        "select i.eixo_bncc eixo, "
+        "sum(case when dr.correta then 1 else 0 end) acertos, count(*) total "
+        "from diagnostico_respostas dr join itens_banco i on i.id = dr.item_id "
+        "where dr.diagnostico_id = ? group by i.eixo_bncc",
+        (diagnostico_id,),
+    ).fetchall()
+    return render_template("coordenador_professores_revisar.html", diag=diag, eixos=eixos)
