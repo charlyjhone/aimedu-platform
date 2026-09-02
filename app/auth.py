@@ -107,18 +107,22 @@ def painel():
 
         segmento = escopo_etapa(u)
         segmento_label = SEGMENTOS_LABEL.get(segmento) if segmento else None
+        # Só conta diagnóstico já revisado pelo professor (ver o loop de
+        # validação em app/modules/coordenador_professores.py) — um cálculo
+        # do motor adaptativo ainda não conferido não deve inflar o número
+        # que a coordenação vê aqui no painel.
         if segmento:
             total_diag = db.execute(
                 "select count(*) c from diagnosticos d join alunos a on a.id = d.aluno_id "
                 "join turmas t on t.id = a.turma_id join series s on s.id = t.serie_id "
-                "where s.escola_id = ? and s.etapa = ?",
+                "where s.escola_id = ? and s.etapa = ? and d.status = 'revisado'",
                 (u["escola_id"], segmento),
             ).fetchone()["c"]
         else:
             total_diag = db.execute(
                 "select count(*) c from diagnosticos d join alunos a on a.id = d.aluno_id "
                 "join turmas t on t.id = a.turma_id join series s on s.id = t.serie_id "
-                "where s.escola_id = ?",
+                "where s.escola_id = ? and d.status = 'revisado'",
                 (u["escola_id"],),
             ).fetchone()["c"]
         contagem = _contagem_por_nivel(db, u["escola_id"], segmento)
