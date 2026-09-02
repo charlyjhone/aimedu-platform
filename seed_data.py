@@ -1,9 +1,12 @@
 """
 Popula o banco local (SQLite) com dados de demonstração:
-  - 1 escola ("Escola A"), 1 série (3º ano EM), 1 turma
-  - usuários de demonstração para todos os papéis — aluno, coordenador,
-    2 professores (Matemática e Português), família, direção (admin) e
-    psicopedagoga (senha "123456" para todos)
+  - 1 escola ("COC MACAPÁ NORTE"), com a estrutura real completa de séries e
+    turmas (Educação Infantil à 3ª série do EM — 16 séries / 27 turmas, ano
+    letivo 2027), espelhando o que está em produção (Supabase)
+  - usuários de demonstração para todos os papéis — aluno, coordenador (uma
+    conta sem segmento + 4 contas de coordenadora, uma por segmento, pra
+    testar o escopo por etapa), 2 professores (Matemática e Português),
+    família, direção (admin) e psicopedagoga (senha "123456" para todos)
   - banco de itens de Matemática: 5 eixos x 5 dificuldades = 25 questões
   - banco de itens de Português: 4 eixos x 5 dificuldades = 20 questões
     (prova de que o Diagnóstico Adaptativo e o Coordenador de Professores
@@ -213,6 +216,45 @@ ITENS_PORTUGUES = [
 ]
 
 
+# Estrutura real da Escola A (COC Macapá Norte), da Educação Infantil à 3ª
+# série do Ensino Médio — mesma lista aplicada em produção (Supabase), pra
+# que o ambiente local de demonstração espelhe fielmente a escola real: 16
+# séries / 27 turmas, ano letivo 2027, turmas A e B até o 7º ano e só turma A
+# do 8º ano em diante (ver migration turmas_reais_coc_macapa_norte).
+ESTRUTURA_TURMAS = [
+    ("infantil", ["Maternal II", "Maternal III", "1º Período", "2º Período"], ("A", "B")),
+    ("fund1", ["1º Ano", "2º Ano", "3º Ano", "4º Ano", "5º Ano"], ("A", "B")),
+    ("fund2", ["6º Ano", "7º Ano"], ("A", "B")),
+    ("fund2", ["8º Ano", "9º Ano"], ("A",)),
+    ("medio", ["1ª Série", "2ª Série", "3ª Série"], ("A",)),
+]
+
+
+def criar_estrutura_turmas(db, escola_id):
+    """Cria as 16 séries / 27 turmas reais da escola e devolve um dict
+    {nome_da_turma: turma_id} — usado, por exemplo, pra matricular a aluna de
+    demonstração na '3ª Série A' assim que a estrutura existe."""
+    turma_id_por_nome = {}
+    ordem = 1
+    for etapa, series_da_etapa, sufixos in ESTRUTURA_TURMAS:
+        for nome_serie in series_da_etapa:
+            serie_id = new_id()
+            db.execute(
+                "insert into series (id, escola_id, nome, etapa, ordem) values (?,?,?,?,?)",
+                (serie_id, escola_id, nome_serie, etapa, ordem),
+            )
+            ordem += 1
+            for sufixo in sufixos:
+                nome_turma = f"{nome_serie} {sufixo}"
+                turma_id = new_id()
+                db.execute(
+                    "insert into turmas (id, serie_id, nome, ano_letivo) values (?,?,?,?)",
+                    (turma_id, serie_id, nome_turma, 2027),
+                )
+                turma_id_por_nome[nome_turma] = turma_id
+    return turma_id_por_nome
+
+
 def run():
     app = create_app()
     with app.app_context():
@@ -220,37 +262,64 @@ def run():
 
         if db.execute("select count(*) c from escolas").fetchone()["c"] == 0:
             escola_id = new_id()
-            db.execute("insert into escolas (id, nome) values (?,?)", (escola_id, "Escola A"))
+            db.execute("insert into escolas (id, nome) values (?,?)", (escola_id, "COC MACAPÁ NORTE"))
 
-            serie_id = new_id()
-            db.execute("insert into series (id, escola_id, nome, etapa, ordem) values (?,?,?,?,?)",
-                       (serie_id, escola_id, "3º ano EM", "medio", 15))
+            turma_id_por_nome = criar_estrutura_turmas(db, escola_id)
+            turma_id = turma_id_por_nome["3ª Série A"]
 
-            turma_id = new_id()
-            db.execute("insert into turmas (id, serie_id, nome, ano_letivo) values (?,?,?,?)",
-                       (turma_id, serie_id, "3º EM A", 2027))
-
-            def add_usuario(nome, email, papel):
+            def add_usuario(nome, email, papel, segmento=None):
                 uid = new_id()
                 db.execute(
-                    "insert into usuarios (id, escola_id, nome, email, senha_hash, papel) values (?,?,?,?,?,?)",
-                    (uid, escola_id, nome, email, hash_senha("123456"), papel),
+                    "insert into usuarios (id, escola_id, nome, email, senha_hash, papel, segmento) "
+                    "values (?,?,?,?,?,?,?)",
+                    (uid, escola_id, nome, email, hash_senha("123456"), papel, segmento),
                 )
                 return uid
 
             aluno_uid = add_usuario("Ana Souza", "aluno@escolaa.com.br", "aluno")
+            # Coordenação de demonstração original — sem segmento, continua
+            # vendo a escola inteira (compatibilidade com quem já testava com
+            # essa conta antes deste recurso existir).
             add_usuario("Coordenação Escola A", "coordenacao@escolaa.com.br", "coordenador")
             add_usuario("Prof. Carlos Lima", "professor@escolaa.com.br", "professor")
 
             db.execute("insert into alunos (id, usuario_id, turma_id) values (?,?,?)",
                        (new_id(), aluno_uid, turma_id))
 
-            print("Escola, turma e usuários de demonstração criados.")
+            print("Escola, turmas (estrutura completa) e usuários de demonstração criados.")
             print("  aluno@escolaa.com.br / 123456")
-            print("  coordenacao@escolaa.com.br / 123456")
+            print("  coordenacao@escolaa.com.br / 123456 (sem segmento — vê a escola inteira)")
             print("  professor@escolaa.com.br / 123456")
         else:
             print("Já existem dados — pulando criação de escola/usuários.")
+
+        # Bloco independente: uma coordenadora de demonstração POR SEGMENTO,
+        # pra dar pra testar na prática que cada uma só vê o próprio pedaço da
+        # escola (Educação Infantil, Fundamental I, Fundamental II e Ensino
+        # Médio — os 4 segmentos citados pela escola). Fica separado da
+        # coordenação genérica acima, que continua sem segmento.
+        if db.execute("select count(*) c from usuarios where email = 'coordenacao-infantil@escolaa.com.br'").fetchone()["c"] == 0:
+            escola = db.execute("select id from escolas limit 1").fetchone()
+            if escola:
+                coordenadoras_por_segmento = [
+                    ("Coordenadora Educação Infantil", "coordenacao-infantil@escolaa.com.br", "infantil"),
+                    ("Coordenadora Fundamental I", "coordenacao-fund1@escolaa.com.br", "fund1"),
+                    ("Coordenadora Fundamental II", "coordenacao-fund2@escolaa.com.br", "fund2"),
+                    ("Coordenadora Ensino Médio", "coordenacao-medio@escolaa.com.br", "medio"),
+                ]
+                for nome, email, segmento in coordenadoras_por_segmento:
+                    db.execute(
+                        "insert into usuarios (id, escola_id, nome, email, senha_hash, papel, segmento) "
+                        "values (?,?,?,?,?,?,?)",
+                        (new_id(), escola["id"], nome, email, hash_senha("123456"), "coordenador", segmento),
+                    )
+                print("Coordenadoras de demonstração (uma por segmento) criadas — senha 123456 para todas:")
+                for _, email, segmento in coordenadoras_por_segmento:
+                    print(f"  {email} ({segmento})")
+            else:
+                print("Escola de demonstração não encontrada — pulando criação das coordenadoras por segmento.")
+        else:
+            print("Coordenadoras por segmento já existem — pulando.")
 
         # Bloco independente (adicionado depois do primeiro deploy): cria um usuário de
         # família e vincula à aluna de demonstração. Roda mesmo que o bloco acima já
@@ -286,7 +355,11 @@ def run():
             professor_usuario = db.execute(
                 "select id from usuarios where email = 'professor@escolaa.com.br'"
             ).fetchone()
-            turma = db.execute("select id from turmas limit 1").fetchone()
+            # Mesma turma da aluna de demonstração ('3ª Série A'), não "a
+            # primeira turma que existir" — agora que a escola tem 27 turmas,
+            # "limit 1" pegaria uma turma qualquer sem relação com o resto do
+            # cenário de demonstração.
+            turma = db.execute("select id from turmas where nome = '3ª Série A'").fetchone()
             if professor_usuario and turma:
                 professor_id = new_id()
                 db.execute(
@@ -311,7 +384,7 @@ def run():
         # própria disciplina).
         if db.execute("select count(*) c from usuarios where email = 'professor2@escolaa.com.br'").fetchone()["c"] == 0:
             escola = db.execute("select id from escolas limit 1").fetchone()
-            turma = db.execute("select id from turmas limit 1").fetchone()
+            turma = db.execute("select id from turmas where nome = '3ª Série A'").fetchone()
             if escola and turma:
                 professora_uid = new_id()
                 db.execute(
