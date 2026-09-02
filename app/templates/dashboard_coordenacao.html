@@ -3,7 +3,10 @@
 {% block conteudo %}
 <div class="card">
   <h2>Bússola Pedagógica</h2>
-  <p>{{ total_diag }} diagnóstico(s) adaptativo(s) realizados até agora em toda a escola.</p>
+  {% if segmento_label %}
+  <p><span class="tag">{{ segmento_label }}</span> — os números abaixo são só do seu segmento.</p>
+  {% endif %}
+  <p>{{ total_diag }} diagnóstico(s) adaptativo(s) realizados até agora {% if segmento_label %}no seu segmento{% else %}em toda a escola{% endif %}.</p>
 </div>
 
 <div class="card">
