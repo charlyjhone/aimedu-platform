@@ -9,7 +9,7 @@
     {% else %}
     Todos os alunos da escola.
     {% endif %}
-    Clique em um aluno para ver ou {% if session['usuario']['papel'] in ('coordenador', 'direcao', 'psicopedagoga') %}editar{% else %}consultar{% endif %} o cadastro.
+    Clique em um aluno para ver ou {% if session['usuario']['papel'] in ('coordenador', 'direcao', 'direcao_pedagogica', 'psicopedagoga') %}editar{% else %}consultar{% endif %} o cadastro.
   </p>
 </div>
 
