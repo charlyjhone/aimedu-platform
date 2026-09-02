@@ -14,6 +14,13 @@ na hora de transformar o resultado numérico em texto para a família/coordenaç
 Isso é o que permite religar este módulo com "IA de verdade" no futuro sem
 reescrever a lógica adaptativa.
 
+Loop de validação do professor: o diagnóstico que resultado() finaliza aqui
+nasce com status "aguardando_revisao" (default do schema — ver app/db.py) e
+o aluno já vê o próprio resultado na hora. Mas ele só conta como oficial
+para os painéis da coordenação e o relatório da família depois que o
+professor da disciplina revisa e confirma (podendo ajustar o nível) em
+app.modules.coordenador_professores.revisar_diagnostico().
+
 Nasceu só para Matemática, mas o schema (itens_banco.disciplina,
 diagnosticos.disciplina) sempre foi genérico — a única coisa hardcoded era
 este módulo, com rotas fixas em /diagnostico/matematica. Agora a disciplina é
