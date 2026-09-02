@@ -38,11 +38,13 @@ create table usuarios (
     -- dele existir, e novas colunas/papéis viraram migrations aplicadas direto no
     -- Supabase) — 'psicopedagoga' e 'ativo' já existem na tabela real, só não
     -- estavam registrados aqui; corrigido para não desviar do banco de verdade.
-    papel         text not null check (papel in ('aluno','professor','coordenador','direcao','familia','psicopedagoga')),
+    papel         text not null check (papel in ('aluno','professor','coordenador','direcao','direcao_pedagogica','familia','psicopedagoga')),
     ativo         boolean not null default true,
     -- segmento: só usado quando papel = 'coordenador', reaproveita os valores
     -- de series.etapa para restringir a visão desse coordenador a uma etapa só
     -- (ver escopo_etapa() em app/auth.py). NULL = sem restrição.
+    -- direcao_pedagogica: mesmo alcance de 'direcao' (ver PAPEIS_DIRECAO em
+    -- app/auth.py), mas sem nenhuma permissão de exclusão definitiva.
     segmento      text,
     criado_em     timestamptz not null default now()
 );
