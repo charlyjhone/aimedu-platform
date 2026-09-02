@@ -63,6 +63,7 @@ _MENU_COORDENACAO = [
         {"label": "Radar da Coordenação", "endpoint": "radar_coordenacao.index", "icone": "activity"},
         {"label": "Coordenador de Professores", "endpoint": "coordenador_professores.index", "icone": "layers"},
         {"label": "Relatório de Professores", "endpoint": "coordenador_professores.relatorio_professores", "icone": "bar-chart"},
+        {"label": "Diagnósticos p/ Revisar", "endpoint": "coordenador_professores.pendencias", "icone": "target"},
     ]},
     {"nome": "Pessoas", "itens": [
         {"label": "Gestão de Usuários", "endpoint": "gestao_usuarios.index", "icone": "users"},
@@ -101,6 +102,7 @@ MENU_POR_PAPEL = {
         {"nome": "Turmas", "itens": [
             {"label": "Turmas", "endpoint": "turmas.index", "icone": "grid"},
             {"label": "Coordenador de Professores", "endpoint": "coordenador_professores.index", "icone": "layers"},
+            {"label": "Diagnósticos p/ Revisar", "endpoint": "coordenador_professores.pendencias", "icone": "target"},
         ]},
         {"nome": "Apoio", "itens": [
             {"label": "Inclusão", "endpoint": "inclusao.index", "icone": "shield"},
