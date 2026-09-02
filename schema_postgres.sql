@@ -89,7 +89,16 @@ create table diagnosticos (
     iniciado_em   timestamptz not null default now(),
     finalizado_em timestamptz,
     nivel_final   numeric(4,2),
-    resumo_ia     text                    -- texto gerado (hoje por regra, depois por IA real)
+    resumo_ia     text,                   -- texto gerado (hoje por regra, depois por IA real)
+    -- Loop de validação do professor: todo diagnóstico finalizado nasce
+    -- 'aguardando_revisao' e só conta como oficial para os painéis da
+    -- coordenação e o relatório da família depois que o professor da
+    -- disciplina (ou coordenação/direção/direção pedagógica, em cobertura)
+    -- confere o nível calculado — e pode ajustá-lo — em
+    -- coordenador_professores.revisar_diagnostico().
+    status        text not null default 'aguardando_revisao' check (status in ('aguardando_revisao', 'revisado')),
+    revisado_em   timestamptz,
+    revisado_por_usuario_id uuid references usuarios(id)
 );
 
 create table diagnostico_respostas (
