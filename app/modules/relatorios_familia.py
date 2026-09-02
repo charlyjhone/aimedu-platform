@@ -70,6 +70,7 @@ def aluno(aluno_id):
     if not aluno_row:
         flash("Aluno não encontrado ou não vinculado à sua conta.", "erro")
         return redirect(url_for("relatorios_familia.index"))
+
     relatorios = db.execute(
         "select * from relatorios_familia where aluno_id = ? order by criado_em desc",
         (aluno_id,),
@@ -86,9 +87,13 @@ def gerar(aluno_id):
         flash("Aluno não encontrado ou não vinculado à sua conta.", "erro")
         return redirect(url_for("relatorios_familia.index"))
 
+    # Só entra no relatório o diagnóstico já revisado pelo professor (ver o
+    # loop de validação em app/modules/coordenador_professores.py) — a
+    # família não deve receber um nível que o motor adaptativo calculou mas
+    # que ainda não foi conferido por ninguém da escola.
     diagnosticos = db.execute(
         "select * from diagnosticos where aluno_id = ? and finalizado_em is not null "
-        "order by finalizado_em desc",
+        "and status = 'revisado' order by finalizado_em desc",
         (aluno_id,),
     ).fetchall()
     redacoes = db.execute(
@@ -135,4 +140,5 @@ def relatorio(relatorio_id):
     if not r:
         flash("Relatório não encontrado.", "erro")
         return redirect(url_for("relatorios_familia.index"))
+
     return render_template("familia_relatorio.html", r=r)
