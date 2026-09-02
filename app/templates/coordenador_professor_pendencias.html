@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block titulo %}Diagnósticos aguardando revisão — AIM.Edu{% endblock %}
+{% block conteudo %}
+
+<div class="card">
+  <h2>Diagnósticos aguardando revisão</h2>
+  <p style="color:#666; font-size:0.85rem;">
+    O aluno já respondeu e o motor adaptativo já calculou um nível — mas ele só entra nas contas
+    oficiais da coordenação e no relatório da família depois que alguém aqui confere (e, se precisar,
+    ajusta) o resultado.
+  </p>
+</div>
+
+<div class="card">
+  {% if pendentes %}
+  <table>
+    <tr><th>Aluno</th><th>Turma</th><th>Disciplina</th><th>Finalizado em</th><th>Nível calculado</th><th></th></tr>
+    {% for d in pendentes %}
+    <tr>
+      <td>{{ d['aluno_nome'] }}</td>
+      <td>{{ d['turma_nome'] }}</td>
+      <td>{{ d['disciplina']|disciplina }}</td>
+      <td>{{ d['finalizado_em']|data }}</td>
+      <td>{{ d['nivel_final']|round(1) if d['nivel_final'] is not none else '—' }}/5</td>
+      <td><a class="botao" href="{{ url_for('coordenador_professores.revisar_diagnostico', diagnostico_id=d['id']) }}">Revisar</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>Nenhum diagnóstico aguardando revisão no momento.</p>
+  {% endif %}
+</div>
+
+<p><a href="{{ url_for('coordenador_professores.index') }}">&larr; Voltar</a></p>
+
+{% endblock %}
