@@ -160,7 +160,15 @@ def corrigir_redacao(tema: str, texto: str) -> dict:
     IMPORTANTE: isto é uma estimativa automática por regras, não uma correção
     oficial — não há um corretor humano nem um modelo de linguagem por trás
     disto hoje (ver aviso no topo deste arquivo). Serve para dar um primeiro
-    retorno rápido ao aluno; a palavra final é sempre do professor."""
+    retorno rápido ao aluno; a palavra final é sempre do professor.
+
+    Nota (redação por foto): esta função não tem mais nenhum ponto do
+    sistema que a chame — o aluno agora envia uma FOTO da redação manuscrita
+    (ver app/modules/redacao.py) e a correção fica pendente até um provedor
+    de IA com visão (Gemini, decidido para o futuro) ler a foto diretamente,
+    sem OCR/transcrição por regra. Mantida aqui de propósito, sem alteração,
+    porque a lógica de heurísticas de texto pode ser reaproveitada quando
+    houver uma transcrição (pelo próprio Gemini) desse texto no futuro."""
     if PROVEDOR_ATIVO == "llm":
         prompt = (
             f"Corrija esta redação dissertativa-argumentativa no modelo ENEM. "
@@ -292,9 +300,15 @@ def gerar_relatorio_familia(nome_aluno: str, diagnosticos: list, redacoes: list,
 
     if redacoes:
         ultima = redacoes[0]
-        nota_total = sum(ultima[c] or 0 for c in ("nota_c1", "nota_c2", "nota_c3", "nota_c4", "nota_c5"))
         tema = ultima["tema"] or "sem tema informado"
-        partes.append(f"Na Redação mais recente ({tema}), a nota estimada foi {nota_total}/1000.")
+        # A redação é enviada por foto e só ganha nota quando um provedor de
+        # IA real corrigir (ver app/modules/redacao.py) — sem isso, mostrar
+        # "0/1000" passaria a impressão errada de que o aluno zerou.
+        if ultima["status"] == "corrigida":
+            nota_total = sum(ultima[c] or 0 for c in ("nota_c1", "nota_c2", "nota_c3", "nota_c4", "nota_c5"))
+            partes.append(f"Na Redação mais recente ({tema}), a nota estimada foi {nota_total}/1000.")
+        else:
+            partes.append(f"Há uma Redação mais recente ({tema}) aguardando correção por IA.")
     else:
         partes.append("Ainda não há redações enviadas.")
 
@@ -362,12 +376,20 @@ def resumo_desempenho_turma(nome_turma: str, total_alunos: int, diagnosticos_por
         partes.append("Ainda não há Diagnóstico Adaptativo disponível para nenhuma disciplina desta turma.")
 
     if alunos_com_redacao:
-        partes.append(
-            f"{alunos_com_redacao} de {total_alunos} já enviaram redação, com nota média de "
-            f"{media_nota_redacao:.0f}/1000."
-        )
-        if competencias_fracas:
-            partes.append(f"A(s) competência(s) do ENEM que mais precisa(m) de atenção: {', '.join(competencias_fracas)}.")
+        # media_nota_redacao só existe quando há pelo menos uma redação já
+        # corrigida (ver _stats_gerais_turma em coordenador_professores.py) —
+        # com a redação por foto, todo envio nasce 'aguardando_ia' até um
+        # provedor de IA real corrigir, então é normal ter aluno_com_redacao
+        # > 0 e media_nota_redacao ainda None.
+        if media_nota_redacao is not None:
+            partes.append(
+                f"{alunos_com_redacao} de {total_alunos} já enviaram redação, com nota média de "
+                f"{media_nota_redacao:.0f}/1000."
+            )
+            if competencias_fracas:
+                partes.append(f"A(s) competência(s) do ENEM que mais precisa(m) de atenção: {', '.join(competencias_fracas)}.")
+        else:
+            partes.append(f"{alunos_com_redacao} de {total_alunos} já enviaram redação, todas aguardando correção por IA.")
     else:
         partes.append("Ainda ninguém na turma enviou redação.")
 
