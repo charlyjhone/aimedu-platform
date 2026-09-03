@@ -1,25 +1,27 @@
 """
-Camada de armazenamento de arquivos do AIM.Edu — hoje usada só pelo M7.1
-(Educação Infantil, app/modules/observacoes_infantil.py), mas escrita como
-camada própria (mesmo espírito de app/db.py) para qualquer módulo futuro que
-precise guardar foto/áudio/vídeo reaproveitar sem duplicar a lógica de
-"onde o arquivo mora de verdade".
+Camada de armazenamento de arquivos do AIM.Edu — usada pelo M7.1 (Educação
+Infantil, app/modules/observacoes_infantil.py, bucket 'observacoes-infantil')
+e pelo envio de redação por foto (app/modules/redacao.py, bucket 'redacoes').
+Escrita como camada própria (mesmo espírito de app/db.py) para qualquer
+módulo futuro que precise guardar foto/áudio/vídeo reaproveitar sem duplicar
+a lógica de "onde o arquivo mora de verdade" — cada módulo só passa o nome
+do seu próprio bucket em cada chamada.
 
 Dois modos, escolhidos automaticamente pelas variáveis de ambiente:
 
   - MODO SUPABASE (produção): quando SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY
     estão definidas, os arquivos vão para um bucket PRIVADO no Supabase
-    Storage (ver bucket 'observacoes-infantil', criado via migration
-    'create_bucket_observacoes_infantil' — public=false). A chave
-    service_role só existe como variável de ambiente do servidor (Render),
-    nunca em código nem em chat — é o mesmo tratamento que DATABASE_URL já
-    recebe. Ela nunca chega ao navegador: toda leitura passa por uma URL
-    assinada de curta duração (ver url_assinada), gerada sob demanda pela
-    rota /infantil/arquivo/<id> depois de conferir que quem está pedindo
-    tem permissão para ver aquele registro específico.
+    Storage (um por módulo — ver migrations create_bucket_observacoes_infantil
+    e create_bucket_redacoes, ambos com public=false). A chave service_role
+    só existe como variável de ambiente do servidor (Render), nunca em
+    código nem em chat — é o mesmo tratamento que DATABASE_URL já recebe.
+    Ela nunca chega ao navegador: toda leitura passa por uma URL assinada de
+    curta duração (ver url_assinada), gerada sob demanda por cada módulo
+    depois de conferir que quem está pedindo tem permissão para ver aquele
+    registro específico.
 
   - MODO LOCAL (desenvolvimento, sem essas variáveis): os arquivos vão para
-    a pasta instance/observacoes_infantil/ deste projeto, fora de app/static
+    a pasta instance/storage/<bucket>/ deste projeto, fora de app/static
     (então não ficam acessíveis por URL direta, sem passar pela checagem de
     permissão da rota — nem em desenvolvimento).
 
@@ -41,11 +43,10 @@ from pathlib import Path
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
-BUCKET = os.environ.get("SUPABASE_STORAGE_BUCKET", "observacoes-infantil")
 
 MODO_SUPABASE = bool(SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY)
 
-PASTA_LOCAL = Path(__file__).resolve().parent.parent / "instance" / "observacoes_infantil"
+PASTA_LOCAL = Path(__file__).resolve().parent.parent / "instance" / "storage"
 
 
 class ErroArmazenamento(Exception):
@@ -53,12 +54,13 @@ class ErroArmazenamento(Exception):
     uma mensagem amigável, nunca o traceback bruto pro usuário final."""
 
 
-def salvar(caminho: str, conteudo: bytes, content_type: str) -> None:
-    """Grava o arquivo no backend ativo. 'caminho' é a chave relativa que
-    quem chama já decidiu (ex.: '<escola_id>/<aluno_id>/<uuid>.jpg') — esta
-    função só sabe gravar, não decide nomes."""
+def salvar(bucket: str, caminho: str, conteudo: bytes, content_type: str) -> None:
+    """Grava o arquivo no backend ativo, dentro do bucket indicado. 'caminho'
+    é a chave relativa que quem chama já decidiu (ex.:
+    '<escola_id>/<aluno_id>/<uuid>.jpg') — esta função só sabe gravar, não
+    decide nomes nem bucket padrão."""
     if MODO_SUPABASE:
-        url = f"{SUPABASE_URL}/storage/v1/object/{BUCKET}/{caminho}"
+        url = f"{SUPABASE_URL}/storage/v1/object/{bucket}/{caminho}"
         req = urllib.request.Request(
             url,
             data=conteudo,
@@ -77,27 +79,27 @@ def salvar(caminho: str, conteudo: bytes, content_type: str) -> None:
             raise ErroArmazenamento(f"Falha ao enviar arquivo ao Supabase Storage: {e}") from e
         return
 
-    destino = PASTA_LOCAL / caminho
+    destino = PASTA_LOCAL / bucket / caminho
     destino.parent.mkdir(parents=True, exist_ok=True)
     destino.write_bytes(conteudo)
 
 
-def ler_local(caminho: str) -> bytes:
+def ler_local(bucket: str, caminho: str) -> bytes:
     """Só usada em MODO LOCAL — a rota que serve o arquivo já conferiu
     permissão antes de chamar isto."""
     try:
-        return (PASTA_LOCAL / caminho).read_bytes()
+        return (PASTA_LOCAL / bucket / caminho).read_bytes()
     except OSError as e:
         raise ErroArmazenamento(f"Arquivo local não encontrado: {e}") from e
 
 
-def url_assinada(caminho: str, expira_em_s: int = 300) -> str:
+def url_assinada(bucket: str, caminho: str, expira_em_s: int = 300) -> str:
     """Só usada em MODO SUPABASE — pede ao Supabase Storage uma URL temporária
     (expira em poucos minutos) para o arquivo, em vez de expor o bucket como
-    público. Chamada sob demanda, a cada visualização, pela rota
-    /infantil/arquivo/<id> — depois que ela já confirmou que o usuário logado
-    pode ver aquele registro."""
-    url = f"{SUPABASE_URL}/storage/v1/object/sign/{BUCKET}/{caminho}"
+    público. Chamada sob demanda, a cada visualização, por cada módulo —
+    depois que ele já confirmou que o usuário logado pode ver aquele
+    registro."""
+    url = f"{SUPABASE_URL}/storage/v1/object/sign/{bucket}/{caminho}"
     body = json.dumps({"expiresIn": expira_em_s}).encode("utf-8")
     req = urllib.request.Request(
         url,
