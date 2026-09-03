@@ -123,11 +123,20 @@ create table if not exists diagnostico_respostas (
     criado_em text not null default (datetime('now'))
 );
 
+-- Redação: o aluno envia uma FOTO da redação manuscrita (decisão do
+-- usuário — não digita mais o texto na tela). 'texto' fica NULL até um
+-- provedor de IA com visão (Gemini, decidido para o futuro) transcrever e
+-- corrigir; até lá 'status' fica 'aguardando_ia' e nota_c1..c5/feedback_ia
+-- ficam NULL. 'arquivo_caminho'/'arquivo_content_type' guardam onde a foto
+-- está no armazenamento (ver app/storage.py, bucket 'redacoes').
 create table if not exists redacoes (
     id text primary key,
     aluno_id text not null references alunos(id),
     tema text,
-    texto text not null,
+    texto text,
+    arquivo_caminho text,
+    arquivo_content_type text,
+    status text not null default 'aguardando_ia' check (status in ('aguardando_ia','corrigida')),
     nota_c1 integer, nota_c2 integer, nota_c3 integer, nota_c4 integer, nota_c5 integer,
     feedback_ia text,
     criado_em text not null default (datetime('now'))
