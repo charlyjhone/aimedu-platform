@@ -52,13 +52,15 @@
   </form>
 </div>
 
+{% if pode_redefinir_senha %}
 <div class="card">
   <h2>Senha</h2>
-  <p style="color:#666; font-size:0.85rem;">Gera uma nova senha temporária aleatória para esta pessoa (a senha atual deixa de funcionar imediatamente).</p>
+  <p style="color:#666; font-size:0.85rem;">Gera uma nova senha temporária aleatória para esta pessoa (a senha atual deixa de funcionar imediatamente). Restrito à direção — coordenação não tem mais esse acesso.</p>
   <form method="post" action="{{ url_for('gestao_usuarios.redefinir_senha', usuario_id=alvo['id']) }}">
     <button class="botao" type="submit" style="background:#8a8a3a;">Gerar nova senha temporária</button>
   </form>
 </div>
+{% endif %}
 
 {% if pode_excluir %}
 <div class="card">
