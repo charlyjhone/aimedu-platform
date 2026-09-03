@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block titulo %}{{ aluno['nome'] }} — Educação Infantil{% endblock %}
+{% block conteudo %}
+<div class="card">
+  <h2>{{ aluno['nome'] }}</h2>
+  <p style="color:#666; font-size:0.85rem;">{{ aluno['turma_nome'] }} · registros de observação do professor, mais recentes primeiro.</p>
+</div>
+
+<div class="card">
+  {% if registros %}
+  <div style="display:flex; flex-direction:column; gap:20px;">
+    {% for r in registros %}
+    <div style="border:1px solid var(--borda); border-radius:8px; padding:14px;">
+      <div style="color:#666; font-size:0.8rem; margin-bottom:8px;">{{ r['criado_em']|data }}</div>
+      {% if r['tipo'] == 'foto' %}
+      <img src="{{ url_for('observacoes_infantil.arquivo', obs_id=r['id']) }}" alt="Foto de {{ aluno['nome'] }}" style="max-width:100%; border-radius:8px;">
+      {% else %}
+      <audio controls src="{{ url_for('observacoes_infantil.arquivo', obs_id=r['id']) }}" style="width:100%;"></audio>
+      {% endif %}
+      {% if r['legenda'] %}
+      <p style="margin-top:10px;"><strong>Anotação:</strong> {{ r['legenda'] }}</p>
+      {% endif %}
+      <div style="margin-top:10px; padding:10px; background:var(--azul-claro); border-radius:6px; font-size:0.9rem;">
+        <strong>Documentação pedagógica:</strong>
+        {% if r['texto_ia'] %}{{ r['texto_ia'] }}{% else %}<span style="color:#666;">Aguardando processamento por IA.</span>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p>Nenhum registro ainda para {{ aluno['nome'] }}.</p>
+  {% endif %}
+</div>
+{% endblock %}
