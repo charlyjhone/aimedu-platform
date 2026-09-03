@@ -3,7 +3,7 @@
 {% block conteudo %}
 <div class="card">
   <h2>Redação (correção estilo ENEM)</h2>
-  <p>Envie o texto de uma redação dissertativa-argumentativa e receba uma estimativa de nota nas 5 competências do ENEM, com feedback sobre o que ajustar.</p>
+  <p>Envie uma foto da sua redação manuscrita — a correção seguindo os critérios do ENEM e a mentoria aparecem assim que a IA estiver disponível.</p>
   <a class="botao" href="{{ url_for('redacao.nova') }}">Enviar nova redação</a>
 </div>
 
@@ -11,12 +11,18 @@
 <div class="card">
   <h2>Minhas redações anteriores</h2>
   <table>
-    <tr><th>Data</th><th>Tema</th><th>Nota estimada</th><th></th></tr>
+    <tr><th>Data</th><th>Tema</th><th>Situação</th><th></th></tr>
     {% for r in redacoes %}
     <tr>
       <td>{{ r['criado_em']|data }}</td>
       <td>{{ r['tema'] or '—' }}</td>
-      <td>{{ (r['nota_c1'] or 0) + (r['nota_c2'] or 0) + (r['nota_c3'] or 0) + (r['nota_c4'] or 0) + (r['nota_c5'] or 0) }}/1000</td>
+      <td>
+        {% if r['status'] == 'aguardando_ia' %}
+        <span style="color:#b8860b;">Aguardando IA</span>
+        {% else %}
+        {{ (r['nota_c1'] or 0) + (r['nota_c2'] or 0) + (r['nota_c3'] or 0) + (r['nota_c4'] or 0) + (r['nota_c5'] or 0) }}/1000
+        {% endif %}
+      </td>
       <td><a href="{{ url_for('redacao.resultado', redacao_id=r['id']) }}">Ver detalhes</a></td>
     </tr>
     {% endfor %}
