@@ -207,9 +207,21 @@ def _stats_gerais_turma(db, turma_id):
         "select count(*) c from alunos where turma_id = ?", (turma_id,)
     ).fetchone()["c"]
 
+    # A partir da redação por foto (o aluno não digita mais o texto — ver
+    # app/modules/redacao.py), toda redação nasce 'aguardando_ia' e só ganha
+    # nota_c1..c5 quando um provedor de IA real corrigir. A média abaixo por
+    # isso só considera as já corrigidas (status = 'corrigida') — do
+    # contrário, uma turma inteira com redações pendentes apareceria com
+    # "nota média 0/1000", como se todo mundo tivesse zerado. Já
+    # alunos_com_redacao conta qualquer envio (corrigido ou não), porque essa
+    # métrica é sobre engajamento (o aluno enviou?), não sobre nota.
     red = db.execute(
-        "select count(*) n, avg(r.nota_c1) c1, avg(r.nota_c2) c2, avg(r.nota_c3) c3, "
-        "avg(r.nota_c4) c4, avg(r.nota_c5) c5, "
+        "select count(case when r.status = 'corrigida' then 1 end) n, "
+        "avg(case when r.status = 'corrigida' then r.nota_c1 end) c1, "
+        "avg(case when r.status = 'corrigida' then r.nota_c2 end) c2, "
+        "avg(case when r.status = 'corrigida' then r.nota_c3 end) c3, "
+        "avg(case when r.status = 'corrigida' then r.nota_c4 end) c4, "
+        "avg(case when r.status = 'corrigida' then r.nota_c5 end) c5, "
         "count(distinct r.aluno_id) alunos_com_red "
         "from redacoes r join alunos a on a.id = r.aluno_id "
         "where a.turma_id = ?",
