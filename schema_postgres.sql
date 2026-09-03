@@ -142,7 +142,30 @@ create table relatorios_familia (
     criado_em     timestamptz not null default now()
 );
 
+-- M7.1 (Educação Infantil) — registro rápido do professor por foto ou áudio,
+-- sem digitação obrigatória (ver app/modules/observacoes_infantil.py). O
+-- arquivo em si vive no Supabase Storage (bucket privado
+-- 'observacoes-infantil', acessado só pela chave service_role no servidor,
+-- nunca por URL pública); esta tabela guarda só o caminho do arquivo e os
+-- metadados. 'texto_ia' é reservado para o M7.2 (documentação pedagógica
+-- gerada por IA), ainda não implementado.
+create table observacoes_infantil (
+    id            uuid primary key default gen_random_uuid(),
+    aluno_id      uuid not null references alunos(id) on delete cascade,
+    turma_id      uuid not null references turmas(id) on delete cascade,
+    professor_usuario_id uuid not null references usuarios(id),
+    tipo          text not null check (tipo in ('foto','audio')),
+    arquivo_caminho text not null,
+    arquivo_content_type text not null,
+    legenda       text,
+    texto_ia      text,
+    status        text not null default 'aguardando_ia' check (status in ('aguardando_ia','processado')),
+    criado_em     timestamptz not null default now()
+);
+
 create index idx_diag_aluno on diagnosticos(aluno_id);
 create index idx_resp_diag on diagnostico_respostas(diagnostico_id);
 create index idx_alunos_turma on alunos(turma_id);
 create index idx_radar_turma on alertas_radar(turma_id);
+create index idx_obs_infantil_aluno on observacoes_infantil(aluno_id);
+create index idx_obs_infantil_turma on observacoes_infantil(turma_id);
