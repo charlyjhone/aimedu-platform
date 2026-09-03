@@ -199,6 +199,26 @@ create table if not exists duvidas_professor (
     resposta_ia text not null,
     criado_em text not null default (datetime('now'))
 );
+
+-- M7.1 (Educação Infantil, escopo do projeto) — registro rápido do professor
+-- por foto ou áudio, sem digitação obrigatória. 'legenda' é o texto opcional
+-- que o próprio professor pode digitar; 'texto_ia' é reservado para o M7.2
+-- (documentação pedagógica gerada por IA a partir do material registrado
+-- aqui) — hoje sempre NULL, com status 'aguardando_ia', porque o M7.2 ainda
+-- depende de um provedor de IA multimodal ser contratado (ver app/ai_engine.py).
+create table if not exists observacoes_infantil (
+    id text primary key,
+    aluno_id text not null references alunos(id),
+    turma_id text not null references turmas(id),
+    professor_usuario_id text not null references usuarios(id),
+    tipo text not null check (tipo in ('foto','audio')),
+    arquivo_caminho text not null,
+    arquivo_content_type text not null,
+    legenda text,
+    texto_ia text,
+    status text not null default 'aguardando_ia' check (status in ('aguardando_ia','processado')),
+    criado_em text not null default (datetime('now'))
+);
 """
 
 
