@@ -3,11 +3,12 @@
 {% block conteudo %}
 <div class="card">
   <h2>Importar alunos em lote (CSV)</h2>
-  <p>O arquivo deve ter 3 colunas, na ordem: <strong>nome, email, turma</strong> (a turma precisa ter exatamente o mesmo nome de uma turma já cadastrada na escola). A primeira linha pode ser um cabeçalho — se for, é detectada e ignorada automaticamente.</p>
+  <p>O arquivo deve ter no mínimo 3 colunas, na ordem: <strong>nome, email, turma</strong> (a turma precisa ter exatamente o mesmo nome de uma turma já cadastrada na escola). A primeira linha pode ser um cabeçalho — se for, é detectada e ignorada automaticamente.</p>
+  <p style="color:#666; font-size:0.85rem;">Duas colunas a mais são opcionais — <strong>nome_responsavel</strong> e <strong>email_responsavel</strong> — pra já criar (ou vincular, se o e-mail já for de uma conta de família, como no caso de irmãos) a conta da família junto com o aluno, sem precisar de um segundo passo depois.</p>
   <p style="color:#666; font-size:0.85rem;">Exemplo de conteúdo do arquivo:</p>
-  <pre style="background:var(--azul-claro); padding:12px; border-radius:6px; font-size:0.85rem; overflow-x:auto;">nome,email,turma
-João Pereira,joao.pereira@escolaa.com.br,3º EM A
-Maria Silva,maria.silva@escolaa.com.br,3º EM A</pre>
+  <pre style="background:var(--azul-claro); padding:12px; border-radius:6px; font-size:0.85rem; overflow-x:auto;">nome,email,turma,nome_responsavel,email_responsavel
+João Pereira,joao.pereira@escolaa.com.br,3º EM A,Carlos Pereira,carlos.pereira@gmail.com
+Maria Silva,maria.silva@escolaa.com.br,3º EM A,,</pre>
   <p><a href="{{ url_for('gestao_usuarios.modelo_csv_alunos') }}">Baixar modelo em branco (.csv)</a> — preencha e envie de volta abaixo.</p>
 
   <form method="post" enctype="multipart/form-data" style="margin-top:16px;">
@@ -30,6 +31,7 @@ Maria Silva,maria.silva@escolaa.com.br,3º EM A</pre>
       <td>
         {% if r['status'] == 'criado' %}
         <span style="color:var(--verde);">Criado</span> — {{ r['email'] }} — senha temporária: <strong>{{ r['senha'] }}</strong>
+        {% if r.get('motivo') %}<br><span style="color:#b8860b;">{{ r['motivo'] }}</span>{% endif %}
         {% else %}
         <span style="color:var(--vermelho);">Erro</span> — {{ r['motivo'] }}
         {% endif %}
