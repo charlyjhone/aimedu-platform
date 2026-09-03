@@ -1,1 +1,27 @@
+{% extends "base.html" %}
+{% block titulo %}Educação Infantil — AIM.Edu{% endblock %}
+{% block conteudo %}
+<div class="card">
+  <h2>Educação Infantil — Registro de Observação</h2>
+  <p style="color:#666; font-size:0.85rem;">
+    {% if turmas %}Abra uma turma para registrar ou ver os registros por foto e áudio de cada criança.
+    {% else %}Nenhuma turma de Educação Infantil disponível para o seu acesso no momento.{% endif %}
+  </p>
+</div>
 
+{% if turmas %}
+<div class="card">
+  <table>
+    <tr><th>Turma</th><th>Série</th><th>Alunos</th><th></th></tr>
+    {% for t in turmas %}
+    <tr>
+      <td>{{ t['nome'] }}</td>
+      <td>{{ t['serie_nome'] }}</td>
+      <td>{{ t['total_alunos'] }}</td>
+      <td><a href="{{ url_for('observacoes_infantil.turma', turma_id=t['id']) }}">Ver registros</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+{% endblock %}
