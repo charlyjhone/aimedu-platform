@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block titulo %}{{ turma['nome'] }} — Educação Infantil{% endblock %}
+{% block conteudo %}
+<div class="card">
+  <h2>{{ turma['nome'] }}</h2>
+  <p>{{ turma['serie_nome'] }} · {{ turma['total_alunos'] }} aluno(s)</p>
+  <a href="{{ url_for('observacoes_infantil.index') }}">&larr; Voltar às turmas</a>
+</div>
+
+{% if pode_registrar %}
+<div class="card">
+  <h2>Registrar agora</h2>
+  {% if alunos %}
+  <p style="color:#666; font-size:0.85rem;">Escolha a criança para tirar uma foto ou gravar um áudio rápido.</p>
+  <table>
+    <tr><th>Nome</th><th></th></tr>
+    {% for a in alunos %}
+    <tr>
+      <td>{{ a['nome'] }}</td>
+      <td><a href="{{ url_for('observacoes_infantil.novo', aluno_id=a['id']) }}">Novo registro</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>Nenhum aluno matriculado nesta turma ainda.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Registros recentes</h2>
+  {% if registros %}
+  <div style="display:flex; flex-wrap:wrap; gap:16px;">
+    {% for r in registros %}
+    <a href="{{ url_for('observacoes_infantil.registro', obs_id=r['id']) }}" style="width:160px; text-decoration:none; color:inherit;">
+      <div style="border:1px solid var(--borda); border-radius:8px; overflow:hidden;">
+        {% if r['tipo'] == 'foto' %}
+        <img src="{{ url_for('observacoes_infantil.arquivo', obs_id=r['id']) }}" alt="Foto de {{ r['aluno_nome'] }}" style="width:100%; height:120px; object-fit:cover; display:block;">
+        {% else %}
+        <div style="width:100%; height:120px; display:flex; align-items:center; justify-content:center; background:var(--azul-claro); font-size:2rem;">🎙️</div>
+        {% endif %}
+        <div style="padding:8px;">
+          <div style="font-weight:bold; font-size:0.9rem;">{{ r['aluno_nome'] }}</div>
+          <div style="color:#666; font-size:0.78rem;">{{ r['criado_em']|data }}</div>
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p>Nenhum registro ainda nesta turma.</p>
+  {% endif %}
+</div>
+{% endblock %}
