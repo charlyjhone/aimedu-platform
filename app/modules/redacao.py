@@ -1,25 +1,42 @@
 """
 Módulo do AIM.Edu: Redação (correção estilo ENEM).
 
-O aluno envia o tema e o texto da redação; o app.ai_engine.corrigir_redacao
-estima uma nota nas 5 competências do ENEM e devolve um feedback. A tabela
-'redacoes' já existia no schema desde o início do projeto — este módulo é o
-primeiro a usá-la.
+O aluno envia uma FOTO da redação manuscrita (decisão do usuário — nunca
+mais digita o texto na tela, "sem digitação obrigatória" no mesmo espírito
+do M7.1/Educação Infantil). A tabela 'redacoes' já existia no schema desde
+o início do projeto, mas ganhou colunas novas para isso (ver migration
+redacoes_envio_por_foto): 'arquivo_caminho'/'arquivo_content_type' (onde a
+foto está — bucket privado 'redacoes' no Supabase Storage, ver
+app/storage.py) e 'status'.
 
-Interligação com o resto do sistema: assim como o Diagnóstico Adaptativo de
-Matemática, quando a nota total fica muito baixa (abaixo de 400/1000), este
-módulo cria um alerta no Radar da Coordenação — mesmo padrão, mesma tabela
-alertas_radar, sem nenhuma integração especial entre os módulos.
+Correção pendente até um provedor de IA real: hoje NENHUMA correção
+automática roda mais no envio — a IA que "segue fielmente" os critérios do
+ENEM e faz a mentoria do aluno depende de um provedor com visão (o usuário
+decidiu que será o Gemini, no futuro — ver PROVEDOR_ATIVO em
+app/ai_engine.py) para ler a letra manuscrita direto da foto. Até essa
+chave existir, toda redação nasce com status='aguardando_ia' e
+nota_c1..c5/feedback_ia ficam NULL — a tela de resultado mostra um aviso
+nesse lugar, mesmo padrão do M7.2 (documentação pedagógica do Infantil).
+Quando o Gemini for conectado, o preenchimento desses campos (e o alerta de
+nota baixa pro Radar da Coordenação, hoje removido daqui por não haver mais
+nota calculada no envio) volta a acontecer nesse momento — em lote ou por
+webhook, sem precisar mudar as telas do aluno.
 """
-from flask import Blueprint, render_template, redirect, url_for, request, flash
+from flask import Blueprint, render_template, redirect, url_for, request, flash, Response
 
+from .. import storage
 from ..db import get_db, new_id
 from ..auth import login_obrigatorio, usuario_logado
-from ..ai_engine import corrigir_redacao
 
 bp = Blueprint("redacao", __name__, url_prefix="/redacao")
 
-LIMIAR_ALERTA = 400  # nota total (de 1000) abaixo da qual um alerta é criado
+# Nome do bucket no Supabase Storage (ver migration create_bucket_redacoes)
+# — cada módulo que usa app/storage.py passa o próprio bucket, ver também
+# app/modules/observacoes_infantil.py.
+BUCKET = "redacoes"
+
+MIME_FOTO = {"image/jpeg", "image/png", "image/webp"}
+TAMANHO_MAXIMO_BYTES = 15 * 1024 * 1024  # 15 MB — mesmo limite do bucket
 
 
 def _aluno_atual(db):
@@ -49,38 +66,53 @@ def nova():
 @login_obrigatorio(papeis=["aluno"])
 def enviar():
     db = get_db()
+    u = usuario_logado()
     aluno = _aluno_atual(db)
 
-    tema = request.form.get("tema", "").strip()
-    texto = request.form.get("texto", "").strip()
-    if not texto:
-        flash("Escreva o texto da redação antes de enviar.", "erro")
-        return redirect(url_for("redacao.nova"))
+    tema = request.form.get("tema", "").strip() or None
+    arquivo = request.files.get("arquivo")
 
-    resultado = corrigir_redacao(tema, texto)
+    erro = None
+    content_type = ""
+    if not arquivo or not arquivo.filename:
+        erro = "Tire uma foto da sua redação antes de enviar."
+    else:
+        # Descarta parâmetros do tipo MIME antes de comparar (mesmo cuidado
+        # de app/modules/observacoes_infantil.py) — o que importa é o
+        # formato da imagem, não detalhes do codec/variante.
+        content_type = (arquivo.mimetype or "").split(";")[0].strip().lower()
+        if content_type not in MIME_FOTO:
+            erro = "Formato de imagem não reconhecido — tire a foto novamente."
+
+    conteudo = b""
+    if not erro:
+        conteudo = arquivo.read()
+        if len(conteudo) > TAMANHO_MAXIMO_BYTES:
+            erro = "Arquivo maior que o permitido (15 MB) — tire a foto novamente com menos resolução."
+
+    if erro:
+        flash(erro, "erro")
+        return render_template("redacao_form.html", form={"tema": tema or ""})
+
+    nome_original = arquivo.filename or ""
+    extensao = nome_original.rsplit(".", 1)[-1].lower() if "." in nome_original else "jpg"
+    caminho = f"{u['escola_id']}/{aluno['id']}/{new_id()}.{extensao}"
+
+    try:
+        storage.salvar(BUCKET, caminho, conteudo, content_type)
+    except storage.ErroArmazenamento:
+        flash("Não foi possível salvar a foto agora. Tente novamente em instantes.", "erro")
+        return render_template("redacao_form.html", form={"tema": tema or ""})
 
     redacao_id = new_id()
     db.execute(
-        "insert into redacoes (id, aluno_id, tema, texto, nota_c1, nota_c2, nota_c3, nota_c4, nota_c5, feedback_ia) "
-        "values (?,?,?,?,?,?,?,?,?,?)",
-        (
-            redacao_id, aluno["id"], tema or None, texto,
-            resultado["nota_c1"], resultado["nota_c2"], resultado["nota_c3"],
-            resultado["nota_c4"], resultado["nota_c5"], resultado["feedback_ia"],
-        ),
+        "insert into redacoes (id, aluno_id, tema, arquivo_caminho, arquivo_content_type) "
+        "values (?,?,?,?,?)",
+        (redacao_id, aluno["id"], tema, caminho, content_type),
     )
     db.commit()
 
-    # Mesma lógica do diagnóstico de matemática: nota muito baixa gera alerta
-    # para a coordenação, na mesma tabela que ela já acompanha no Radar.
-    if resultado["nota_total"] < LIMIAR_ALERTA:
-        db.execute(
-            "insert into alertas_radar (id, turma_id, aluno_id, nivel, motivo) values (?,?,?,?,?)",
-            (new_id(), aluno["turma_id"], aluno["id"], "alto",
-             f"Redação com nota estimada de {resultado['nota_total']}/1000 (abaixo do esperado)."),
-        )
-        db.commit()
-
+    flash("Redação enviada — assim que a correção por IA estiver disponível, o resultado aparece aqui.", "ok")
     return redirect(url_for("redacao.resultado", redacao_id=redacao_id))
 
 
@@ -99,3 +131,32 @@ def resultado(redacao_id):
 
     nota_total = sum(redacao[c] or 0 for c in ("nota_c1", "nota_c2", "nota_c3", "nota_c4", "nota_c5"))
     return render_template("redacao_resultado.html", r=redacao, nota_total=nota_total)
+
+
+@bp.route("/<redacao_id>/arquivo")
+@login_obrigatorio(papeis=["aluno"])
+def arquivo(redacao_id):
+    db = get_db()
+    aluno = _aluno_atual(db)
+    redacao = db.execute(
+        "select arquivo_caminho, arquivo_content_type from redacoes where id = ? and aluno_id = ?",
+        (redacao_id, aluno["id"]),
+    ).fetchone()
+    if not redacao or not redacao["arquivo_caminho"]:
+        flash("Foto não encontrada.", "erro")
+        return redirect(url_for("redacao.index"))
+
+    if storage.MODO_SUPABASE:
+        try:
+            url_temp = storage.url_assinada(BUCKET, redacao["arquivo_caminho"])
+        except storage.ErroArmazenamento:
+            flash("Não foi possível carregar a foto agora. Tente novamente em instantes.", "erro")
+            return redirect(url_for("redacao.index"))
+        return redirect(url_temp)
+
+    try:
+        conteudo = storage.ler_local(BUCKET, redacao["arquivo_caminho"])
+    except storage.ErroArmazenamento:
+        flash("Foto não encontrada — pode ter sido perdida num reinício do ambiente de teste.", "erro")
+        return redirect(url_for("redacao.index"))
+    return Response(conteudo, mimetype=redacao["arquivo_content_type"])
