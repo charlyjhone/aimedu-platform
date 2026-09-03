@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block titulo %}Registro — {{ r['aluno_nome'] }}{% endblock %}
+{% block conteudo %}
+<div class="card">
+  <h2>{{ r['aluno_nome'] }}</h2>
+  <p style="color:#666; font-size:0.85rem;">
+    {{ r['turma_nome'] }}
+    {% if r['professor_nome'] %} · registrado por {{ r['professor_nome'] }}{% endif %}
+    · {{ r['criado_em']|data }}
+  </p>
+
+  {% if r['tipo'] == 'foto' %}
+  <img src="{{ url_for('observacoes_infantil.arquivo', obs_id=r['id']) }}" alt="Foto de {{ r['aluno_nome'] }}" style="max-width:100%; border-radius:8px; margin-top:12px;">
+  {% else %}
+  <audio controls src="{{ url_for('observacoes_infantil.arquivo', obs_id=r['id']) }}" style="width:100%; margin-top:12px;"></audio>
+  {% endif %}
+
+  {% if r['legenda'] %}
+  <p style="margin-top:16px;"><strong>Anotação do professor:</strong> {{ r['legenda'] }}</p>
+  {% endif %}
+
+  <div style="margin-top:16px; padding:12px; background:var(--azul-claro); border-radius:8px;">
+    <strong>Documentação pedagógica (gerada por IA):</strong>
+    {% if r['texto_ia'] %}
+    <p style="margin-top:6px;">{{ r['texto_ia'] }}</p>
+    {% else %}
+    <p style="margin-top:6px; color:#666;">Aguardando processamento por IA.</p>
+    {% endif %}
+  </div>
+
+  <p style="margin-top:20px;"><a href="{{ voltar }}">&larr; Voltar</a></p>
+</div>
+{% endblock %}
