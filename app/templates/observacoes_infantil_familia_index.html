@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block titulo %}Educação Infantil — AIM.Edu{% endblock %}
+{% block conteudo %}
+<div class="card">
+  <h2>Educação Infantil — acompanhamento</h2>
+  {% if alunos %}
+  <table>
+    <tr><th>Nome</th><th>Turma</th><th></th></tr>
+    {% for a in alunos %}
+    <tr>
+      <td>{{ a['nome'] }}</td>
+      <td>{{ a['turma_nome'] }}</td>
+      <td><a href="{{ url_for('observacoes_infantil.familia_aluno', aluno_id=a['id']) }}">Ver registros</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>Nenhum aluno da Educação Infantil está vinculado à sua conta no momento.</p>
+  {% endif %}
+</div>
+{% endblock %}
