@@ -3,15 +3,16 @@
 {% block conteudo %}
 <div class="card">
   <h2>Nova redação</h2>
-  <p>Escreva um texto dissertativo-argumentativo (recomendado: entre 200 e 350 palavras, com introdução, desenvolvimento e conclusão com proposta de intervenção).</p>
-  <form method="post" action="{{ url_for('redacao.enviar') }}">
-    <label for="tema">Tema da redação</label>
-    <input type="text" id="tema" name="tema" placeholder="Ex.: Os desafios da mobilidade urbana nas grandes cidades brasileiras" style="width:100%; padding:10px; border:1px solid var(--borda); border-radius:6px; font-size:0.95rem;">
+  <p style="color:#666; font-size:0.85rem;">Tire uma foto da sua redação manuscrita — não precisa digitar o texto. A correção por IA aparece assim que estiver disponível.</p>
 
-    <label for="texto" style="margin-top:16px;">Texto</label>
-    <textarea id="texto" name="texto" rows="20" required style="width:100%; padding:12px; border:1px solid var(--borda); border-radius:6px; font-size:0.95rem; font-family:inherit;" placeholder="Escreva sua redação aqui..."></textarea>
+  <form method="post" action="{{ url_for('redacao.enviar') }}" enctype="multipart/form-data">
+    <label for="tema">Tema da redação (opcional)</label>
+    <input type="text" id="tema" name="tema" value="{{ form.get('tema', '') if form else '' }}" placeholder="Ex.: Os desafios da mobilidade urbana nas grandes cidades brasileiras" style="width:100%; padding:10px; border:1px solid var(--borda); border-radius:6px; font-size:0.95rem;">
 
-    <button class="botao" type="submit" style="margin-top:16px;">Enviar para correção</button>
+    <label for="arquivo" style="margin-top:16px;">Foto da redação</label>
+    <input type="file" id="arquivo" name="arquivo" accept="image/*" capture="environment" required style="display:block; margin-top:6px;">
+
+    <button class="botao" type="submit" style="margin-top:20px;">Enviar para correção</button>
   </form>
 </div>
 {% endblock %}
