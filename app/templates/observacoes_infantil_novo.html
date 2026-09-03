@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block titulo %}Novo registro — {{ aluno['nome'] }}{% endblock %}
+{% block conteudo %}
+<div class="card">
+  <h2>Novo registro — {{ aluno['nome'] }}</h2>
+  <p style="color:#666; font-size:0.85rem;">{{ aluno['turma_nome'] }} · tire uma foto ou grave um áudio de até 30 segundos. A anotação escrita é sempre opcional.</p>
+
+  <form method="post" enctype="multipart/form-data" id="form-registro">
+    <input type="hidden" name="tipo" id="campo-tipo" value="foto">
+    <input type="file" name="arquivo" id="input-arquivo-final" style="display:none;">
+
+    <div style="display:flex; gap:12px; margin-bottom:20px;">
+      <button type="button" class="botao" id="botao-tipo-foto" onclick="escolherTipo('foto')">📷 Foto</button>
+      <button type="button" class="botao" id="botao-tipo-audio" onclick="escolherTipo('audio')" style="background:#8a8a3a;">🎙️ Áudio</button>
+    </div>
+
+    <div id="secao-foto">
+      <label for="input-foto">Tire ou envie uma foto</label>
+      <input type="file" id="input-foto" accept="image/*" capture="environment" onchange="copiarArquivo('input-foto', 'foto')" style="display:block; margin-top:6px;">
+    </div>
+
+    <div id="secao-audio" style="display:none;">
+      <p id="status-gravacao" style="color:#666; font-size:0.85rem;">Toque em "Gravar" e fale por até 30 segundos.</p>
+      <button type="button" class="botao" id="botao-gravar" onclick="alternarGravacao()">● Gravar</button>
+      <span id="cronometro" style="margin-left:10px; font-weight:bold;"></span>
+      <audio id="preview-audio" controls style="display:none; margin-top:12px; width:100%;"></audio>
+      <p style="color:#666; font-size:0.8rem; margin-top:16px;">Se o microfone não funcionar aqui, anexe um áudio já gravado:</p>
+      <input type="file" id="input-audio-arquivo" accept="audio/*" onchange="copiarArquivo('input-audio-arquivo', 'audio')">
+    </div>
+
+    <label for="legenda" style="margin-top:20px;">Anotação (opcional)</label>
+    <textarea id="legenda" name="legenda" rows="2" style="width:100%; padding:10px; border:1px solid var(--borda); border-radius:6px; font-size:0.95rem;"></textarea>
+
+    <button class="botao" type="submit" style="margin-top:20px;">Salvar registro</button>
+  </form>
+
+  <p style="margin-top:16px;"><a href="{{ url_for('observacoes_infantil.turma', turma_id=aluno['turma_id']) }}">&larr; Cancelar e voltar</a></p>
+</div>
+
+<script>
+function escolherTipo(tipo) {
+  document.getElementById('secao-foto').style.display = tipo === 'foto' ? 'block' : 'none';
+  document.getElementById('secao-audio').style.display = tipo === 'audio' ? 'block' : 'none';
+  document.getElementById('campo-tipo').value = tipo;
+}
+
+function copiarArquivo(origemId, tipo) {
+  const origem = document.getElementById(origemId);
+  const destino = document.getElementById('input-arquivo-final');
+  if (origem.files && origem.files[0]) {
+    const dt = new DataTransfer();
+    dt.items.add(origem.files[0]);
+    destino.files = dt.files;
+    document.getElementById('campo-tipo').value = tipo;
+  }
+}
+
+let mediaRecorder, chunksGravados = [], cronometroInterval, segundosGravados = 0;
+
+async function alternarGravacao() {
+  const botao = document.getElementById('botao-gravar');
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    chunksGravados = [];
+    const candidatos = ['audio/webm', 'audio/mp4', 'audio/ogg'];
+    const escolhido = candidatos.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';
+    mediaRecorder = escolhido ? new MediaRecorder(stream, { mimeType: escolhido }) : new MediaRecorder(stream);
+
+    mediaRecorder.ondataavailable = function (e) { chunksGravados.push(e.data); };
+    mediaRecorder.onstop = function () {
+      stream.getTracks().forEach(t => t.stop());
+      clearInterval(cronometroInterval);
+      document.getElementById('cronometro').textContent = '';
+      botao.textContent = '● Gravar';
+
+      const blob = new Blob(chunksGravados, { type: mediaRecorder.mimeType || 'audio/webm' });
+      const arquivoGravado = new File([blob], 'observacao.webm', { type: blob.type });
+      const dt = new DataTransfer();
+      dt.items.add(arquivoGravado);
+      document.getElementById('input-arquivo-final').files = dt.files;
+      document.getElementById('campo-tipo').value = 'audio';
+
+      const preview = document.getElementById('preview-audio');
+      preview.src = URL.createObjectURL(blob);
+      preview.style.display = 'block';
+    };
+
+    mediaRecorder.start();
+    botao.textContent = '■ Parar';
+    segundosGravados = 0;
+    document.getElementById('cronometro').textContent = '0s';
+    cronometroInterval = setInterval(function () {
+      segundosGravados++;
+      document.getElementById('cronometro').textContent = segundosGravados + 's';
+      if (segundosGravados >= 30) mediaRecorder.stop();
+    }, 1000);
+  } catch (err) {
+    document.getElementById('status-gravacao').textContent = 'Não foi possível acessar o microfone. Use o campo abaixo para anexar um áudio já gravado.';
+  }
+}
+
+if (!(navigator.mediaDevices && window.MediaRecorder)) {
+  document.getElementById('botao-gravar').style.display = 'none';
+  document.getElementById('status-gravacao').textContent = 'Gravação direta não é compatível com este navegador — anexe um áudio já gravado abaixo.';
+}
+
+document.getElementById('form-registro').addEventListener('submit', function (e) {
+  const destino = document.getElementById('input-arquivo-final');
+  if (!destino.files || destino.files.length === 0) {
+    e.preventDefault();
+    alert('Tire uma foto ou grave um áudio antes de salvar.');
+  }
+});
+</script>
+{% endblock %}
