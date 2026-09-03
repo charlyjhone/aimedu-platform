@@ -24,7 +24,10 @@ Os níveis de acesso, na prática:
   acima da sua própria) — e NÃO tem acesso à exclusão definitiva de conta
   nenhuma, só à ativação e desativação. Isso é decidido em
   _pode_gerenciar_papel() e checado em toda rota que cria ou edita conta; a
-  exclusão é checada à parte, só para direção (ver excluir()).
+  exclusão é checada à parte, só para direção (ver excluir()). Também não
+  tem acesso a gerar uma nova senha temporária para outra conta — essa é
+  uma alteração de "login", não um dado de cadastro comum, e fica restrita
+  a PAPEIS_DIRECAO (ver redefinir_senha() e a nota abaixo).
 - Psicopedagoga: sem acesso a esta tela de gestão de usuários — o papel
   existe para o módulo de Inclusão (app/modules/inclusao.py), onde ela é
   quem edita o cadastro de inclusão e o PEI de qualquer aluno da escola
@@ -54,15 +57,39 @@ permitir a troca abriria uma porta de inconsistência de dados que não vale
 a pena para um caso de uso raro. Pra isso, é mais simples desativar a conta
 antiga e criar uma nova com o papel certo.
 
+Também não existe, em lugar nenhum do sistema (nem aqui, nem em perfil()),
+uma forma de trocar o e-mail de login de uma conta já criada — nem a
+própria pessoa, nem coordenação, nem direção. O e-mail é definido só na
+criação (novo() ou importação em lote) e fica fixo depois — editar()/
+gestao_usuarios_editar.html mostra o e-mail como texto, nunca como campo
+editável. Isso não é uma lacuna: é a forma mais simples de garantir que
+ninguém altera o "login" de ninguém depois de cadastrado. Se um e-mail foi
+digitado errado na criação, o caminho é desativar a conta errada e criar
+de novo com o e-mail certo.
+
 Cadastro em lote: upload de um arquivo CSV separado para alunos
-(nome,email,turma) e para professores (nome,email,disciplina,turmas — com
-múltiplas turmas separadas por ";"). Cada linha é processada de forma
+(nome,email,turma,nome_responsavel,email_responsavel — as duas últimas
+colunas são opcionais) e para professores (nome,email,disciplina,turmas —
+com múltiplas turmas separadas por ";"). Cada linha é processada de forma
 independente — uma linha com erro (e-mail duplicado, turma não encontrada)
 não derruba as outras, o resultado mostra o status linha a linha. Cada tela
 de importação também oferece um modelo .csv em branco pra baixar, preencher
 e já subir de volta. Toda conta criada (individual ou em lote) recebe uma
 senha temporária aleatória, mostrada uma única vez logo após a criação — o
 sistema não guarda senha em texto puro em nenhum momento.
+
+Vínculo de família no próprio cadastro do aluno: tanto a criação individual
+(novo(), quando papel == "aluno") quanto a importação em lote
+(importar_alunos()) aceitam um e-mail de responsável opcional. Se esse
+e-mail já pertence a uma conta de papel "familia", só vincula
+(alunos.responsavel_usuario_id) — útil para o segundo filho do mesmo
+responsável, mesmo dentro do mesmo arquivo CSV. Se o e-mail é novo, cria a
+conta de família na hora (exige nome_responsavel nesse caso) e mostra a
+senha temporária dela junto com a do aluno. Isso substitui o fluxo antigo
+de cadastrar o aluno e, num segundo passo separado, criar a conta da
+família e escolher o "Aluno vinculado" manualmente — esse segundo fluxo
+continua existindo (útil para vincular um aluno já cadastrado antes desta
+mudança, ou uma família cuja conta já existe sem e-mail informado na hora).
 """
 import csv
 import io
@@ -347,6 +374,16 @@ def novo():
         turmas_professor = [t for t in request.form.getlist("turmas_professor") if t in turma_ids_permitidos]
         aluno_vinculado_id = request.form.get("aluno_vinculado_id") or None
         segmento_novo = request.form.get("segmento") or None
+        # Vínculo de família direto no cadastro do aluno (só se aplica quando papel
+        # == "aluno") — poupa o passo separado de criar a conta de família depois.
+        # Ver o bloco "if papel == 'aluno':" mais abaixo pra a lógica de
+        # criar/reaproveitar a conta.
+        nome_responsavel = request.form.get("nome_responsavel", "").strip()
+        email_responsavel = request.form.get("email_responsavel", "").strip().lower()
+        responsavel_existente = (
+            db.execute("select * from usuarios where email = ?", (email_responsavel,)).fetchone()
+            if email_responsavel else None
+        )
 
         erro = None
         if not nome or not email or papel not in PAPEIS_LABEL:
@@ -363,6 +400,10 @@ def novo():
             erro = "Selecione a disciplina na lista."
         elif papel == "coordenador" and segmento_novo and segmento_novo not in SEGMENTOS_LABEL:
             erro = "Segmento inválido — selecione uma opção da lista."
+        elif papel == "aluno" and email_responsavel and responsavel_existente and responsavel_existente["papel"] != "familia":
+            erro = "Já existe uma conta com esse e-mail de responsável, mas ela não é uma conta de família — não é possível vincular."
+        elif papel == "aluno" and email_responsavel and not responsavel_existente and not nome_responsavel:
+            erro = "Informe o nome do responsável para criar a conta da família junto com o aluno."
 
         if erro:
             flash(erro, "erro")
@@ -380,8 +421,27 @@ def novo():
             "values (?,?,?,?,?,?,?,?)",
             (uid, escola_id, nome, email, hash_senha(senha_temp), papel, True, segmento_salvo),
         )
+        senha_responsavel = None
         if papel == "aluno":
             db.execute("insert into alunos (id, usuario_id, turma_id) values (?,?,?)", (new_id(), uid, turma_id))
+            if email_responsavel:
+                if responsavel_existente:
+                    db.execute(
+                        "update alunos set responsavel_usuario_id = ? where usuario_id = ?",
+                        (responsavel_existente["id"], uid),
+                    )
+                else:
+                    responsavel_id = new_id()
+                    senha_responsavel = _gerar_senha_temporaria()
+                    db.execute(
+                        "insert into usuarios (id, escola_id, nome, email, senha_hash, papel, ativo) "
+                        "values (?,?,?,?,?,?,?)",
+                        (responsavel_id, escola_id, nome_responsavel, email_responsavel,
+                         hash_senha(senha_responsavel), "familia", True),
+                    )
+                    db.execute(
+                        "update alunos set responsavel_usuario_id = ? where usuario_id = ?", (responsavel_id, uid)
+                    )
         elif papel == "professor":
             professor_id = new_id()
             db.execute(
@@ -396,11 +456,19 @@ def novo():
             db.execute("update alunos set responsavel_usuario_id = ? where id = ?", (uid, aluno_vinculado_id))
 
         db.commit()
-        flash(
+        mensagem = (
             f"Usuário {nome} criado. E-mail: {email} — senha temporária: {senha_temp} "
-            "(anote agora, ela não será mostrada de novo).",
-            "credenciais",
+            "(anote agora, ela não será mostrada de novo)."
         )
+        if papel == "aluno" and email_responsavel:
+            if senha_responsavel:
+                mensagem += (
+                    f" Conta da família também criada — e-mail: {email_responsavel} — "
+                    f"senha temporária: {senha_responsavel}."
+                )
+            else:
+                mensagem += f" Vinculado à conta de família já existente ({email_responsavel})."
+        flash(mensagem, "credenciais")
         return redirect(url_for("gestao_usuarios.index"))
 
     return render_template(
@@ -446,12 +514,21 @@ def editar(usuario_id):
     # única ação que a direção pedagógica não tem, de propósito.
     pode_excluir = ator["papel"] == "direcao" and alvo["id"] != ator["id"]
     pode_definir_segmento = ator["papel"] in PAPEIS_DIRECAO and alvo["papel"] == "coordenador"
+    # Gerar uma nova senha temporária para OUTRA conta é uma alteração de
+    # login, não um dado de cadastro comum — por isso fica restrito à
+    # direção (PAPEIS_DIRECAO), mesmo para coordenação que já gerencia esse
+    # aluno/professor/família em tudo mais (turma, disciplina, ativo/inativo
+    # etc.). Ver a mesma restrição em redefinir_senha() abaixo — o botão some
+    # daqui quando pode_redefinir_senha é False, mas a rota também recusa
+    # sozinha, então não depende só do template escondê-lo.
+    pode_redefinir_senha = ator["papel"] in PAPEIS_DIRECAO
 
     return render_template(
         "gestao_usuarios_editar.html", alvo=alvo, turmas=turmas, turma_atual_id=turma_atual_id,
         professor_row=professor_row, turmas_vinculadas=turmas_vinculadas, papeis_label=PAPEIS_LABEL,
         disciplinas=DISCIPLINAS_DISPONIVEIS, pode_excluir=pode_excluir,
         segmentos=SEGMENTOS_DISPONIVEIS, pode_definir_segmento=pode_definir_segmento,
+        pode_redefinir_senha=pode_redefinir_senha,
     )
 
 
@@ -522,7 +599,7 @@ def salvar(usuario_id):
 
 
 @bp.route("/<usuario_id>/redefinir-senha", methods=["POST"])
-@login_obrigatorio(papeis=["coordenador", "direcao", "direcao_pedagogica"])
+@login_obrigatorio(papeis=["direcao", "direcao_pedagogica"])
 def redefinir_senha(usuario_id):
     db = get_db()
     alvo = db.execute(
@@ -633,7 +710,7 @@ def perfil():
 @bp.route("/importar/alunos/modelo.csv")
 @login_obrigatorio(papeis=["coordenador", "direcao", "direcao_pedagogica"])
 def modelo_csv_alunos():
-    conteudo = "﻿nome,email,turma\n"
+    conteudo = "﻿nome,email,turma,nome_responsavel,email_responsavel\n"
     return Response(
         conteudo, mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=modelo_importar_alunos.csv"},
@@ -685,6 +762,12 @@ def importar_alunos():
 
             nome, email, turma_nome = (c.strip() for c in linha[:3])
             email = email.lower()
+            # Colunas 4 e 5 são opcionais — mesma ideia do vínculo de família que
+            # existe na criação individual (gestao_usuarios.novo): se vier e-mail
+            # de responsável, cria ou reaproveita a conta de família aqui mesmo,
+            # sem precisar de um segundo passo depois da importação.
+            nome_responsavel = linha[3].strip() if len(linha) > 3 else ""
+            email_responsavel = linha[4].strip().lower() if len(linha) > 4 else ""
             if not nome or not email or not turma_nome:
                 resultados.append({"linha": i, "nome": nome or "-", "status": "erro", "motivo": "nome, e-mail ou turma em branco"})
                 continue
@@ -714,7 +797,43 @@ def importar_alunos():
                 (uid, escola_id, nome, email, hash_senha(senha_temp), "aluno", True),
             )
             db.execute("insert into alunos (id, usuario_id, turma_id) values (?,?,?)", (new_id(), uid, turma["id"]))
-            resultados.append({"linha": i, "nome": nome, "email": email, "senha": senha_temp, "status": "criado"})
+
+            aviso_familia = None
+            if email_responsavel:
+                responsavel = db.execute("select * from usuarios where email = ?", (email_responsavel,)).fetchone()
+                if responsavel and responsavel["papel"] == "familia":
+                    db.execute(
+                        "update alunos set responsavel_usuario_id = ? where usuario_id = ?",
+                        (responsavel["id"], uid),
+                    )
+                    aviso_familia = f"vinculado à família já existente ({email_responsavel})"
+                elif responsavel:
+                    aviso_familia = (
+                        f"e-mail do responsável ({email_responsavel}) já usado por uma conta que não é "
+                        "família — vínculo não criado"
+                    )
+                elif not nome_responsavel:
+                    aviso_familia = "nome do responsável não informado — conta da família não criada"
+                else:
+                    responsavel_id = new_id()
+                    senha_familia = _gerar_senha_temporaria()
+                    db.execute(
+                        "insert into usuarios (id, escola_id, nome, email, senha_hash, papel, ativo) "
+                        "values (?,?,?,?,?,?,?)",
+                        (responsavel_id, escola_id, nome_responsavel, email_responsavel,
+                         hash_senha(senha_familia), "familia", True),
+                    )
+                    db.execute(
+                        "update alunos set responsavel_usuario_id = ? where usuario_id = ?", (responsavel_id, uid)
+                    )
+                    aviso_familia = (
+                        f"conta de família criada — e-mail: {email_responsavel} — senha temporária: {senha_familia}"
+                    )
+
+            resultados.append({
+                "linha": i, "nome": nome, "email": email, "senha": senha_temp, "status": "criado",
+                "motivo": aviso_familia,
+            })
 
         db.commit()
 
