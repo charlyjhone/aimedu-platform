@@ -35,6 +35,8 @@ produção, pasta local em desenvolvimento) e só é servido por
 /infantil/arquivo/<id>, depois de repetir a mesma checagem de permissão da
 tela de visualização — nunca por link direto ao arquivo.
 """
+import os
+
 from flask import Blueprint, render_template, request, redirect, url_for, flash, Response
 
 from .. import storage
@@ -42,6 +44,12 @@ from ..db import get_db, new_id
 from ..auth import login_obrigatorio, usuario_logado, escopo_etapa, PAPEIS_DIRECAO
 
 bp = Blueprint("observacoes_infantil", __name__, url_prefix="/infantil")
+
+# Nome do bucket no Supabase Storage (ver migration
+# create_bucket_observacoes_infantil) — cada módulo que usa app/storage.py
+# passa o próprio bucket em toda chamada, em vez da camada de storage ter um
+# padrão fixo (ver app/modules/redacao.py para o segundo exemplo disso).
+BUCKET = os.environ.get("SUPABASE_STORAGE_BUCKET", "observacoes-infantil")
 
 PAPEIS_REGISTRO = ("professor", "coordenador") + PAPEIS_DIRECAO
 PAPEIS_EQUIPE = ("professor", "coordenador", "psicopedagoga") + PAPEIS_DIRECAO
@@ -230,7 +238,7 @@ def novo(aluno_id):
         caminho = f"{usuario_logado()['escola_id']}/{aluno_id}/{new_id()}.{extensao}"
 
         try:
-            storage.salvar(caminho, conteudo, content_type)
+            storage.salvar(BUCKET, caminho, conteudo, content_type)
         except storage.ErroArmazenamento:
             flash("Não foi possível salvar o arquivo agora. Tente novamente em instantes.", "erro")
             return render_template("observacoes_infantil_novo.html", aluno=aluno)
@@ -280,14 +288,14 @@ def arquivo(obs_id):
 
     if storage.MODO_SUPABASE:
         try:
-            url_temp = storage.url_assinada(r["arquivo_caminho"])
+            url_temp = storage.url_assinada(BUCKET, r["arquivo_caminho"])
         except storage.ErroArmazenamento:
             flash("Não foi possível carregar o arquivo agora. Tente novamente em instantes.", "erro")
             return redirect(url_for("observacoes_infantil.index"))
         return redirect(url_temp)
 
     try:
-        conteudo = storage.ler_local(r["arquivo_caminho"])
+        conteudo = storage.ler_local(BUCKET, r["arquivo_caminho"])
     except storage.ErroArmazenamento:
         flash("Arquivo não encontrado — pode ter sido perdido num reinício do ambiente de teste.", "erro")
         return redirect(url_for("observacoes_infantil.index"))
