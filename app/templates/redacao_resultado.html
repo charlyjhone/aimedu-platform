@@ -3,8 +3,27 @@
 {% block conteudo %}
 <div class="card">
   <h2>{{ r['tema'] or 'Redação sem tema informado' }}</h2>
+  <p style="color:#666; font-size:0.85rem;">Enviada em {{ r['criado_em']|data }}</p>
+  {% if r['arquivo_caminho'] %}
+  <img src="{{ url_for('redacao.arquivo', redacao_id=r['id']) }}" alt="Foto da redação" style="max-width:100%; border-radius:8px; margin-top:12px;">
+  {% endif %}
+</div>
+
+{% if r['status'] == 'aguardando_ia' %}
+<div class="card">
+  <h2>Correção</h2>
+  <div style="padding:12px; background:var(--azul-claro); border-radius:8px;">
+    <strong>Aguardando processamento por IA.</strong>
+    <p style="margin-top:6px; color:#666; font-size:0.9rem;">
+      A correção seguindo os critérios do ENEM e a mentoria personalizada aparecem aqui assim que
+      o provedor de IA estiver conectado.
+    </p>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <h2>Nota estimada</h2>
   <p style="font-size:1.4rem; font-weight:bold; color:var(--azul);">{{ nota_total }}/1000</p>
-  <p style="color:#666; font-size:0.85rem;">Nota estimada automaticamente por regras — não substitui a correção de um professor.</p>
 </div>
 
 <div class="card">
@@ -27,14 +46,10 @@
 </div>
 
 <div class="card">
-  <h2>Feedback</h2>
+  <h2>Mentoria</h2>
   <p>{{ r['feedback_ia'] }}</p>
 </div>
-
-<div class="card">
-  <h2>Texto enviado</h2>
-  <p style="white-space: pre-wrap;">{{ r['texto'] }}</p>
-</div>
+{% endif %}
 
 <a href="{{ url_for('redacao.index') }}">&larr; Voltar</a>
 {% endblock %}
