@@ -4,7 +4,7 @@ from flask import Flask, session
 from .db import init_db, get_db
 from . import auth
 from .auth import escopo_etapa, PAPEIS_DIRECAO
-from .modules import diagnostico, radar_coordenacao, bussola_vocacional, redacao, relatorios_familia, inclusao, gestao_usuarios, coordenador_professores, turmas
+from .modules import diagnostico, radar_coordenacao, bussola_vocacional, redacao, relatorios_familia, inclusao, gestao_usuarios, coordenador_professores, turmas, observacoes_infantil
 from .modules.gestao_usuarios import PAPEIS_LABEL, SEGMENTOS_LABEL
 from .ai_engine import NOMES_DISCIPLINA
 
@@ -55,11 +55,13 @@ ICONES_SVG = {
     "target": "<circle cx='12' cy='12' r='9'/><circle cx='12' cy='12' r='5'/><circle cx='12' cy='12' r='1'/>",
     "file-text": "<path d='M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z'/><path d='M14 2v6h6'/><path d='M8 13h8M8 17h8M8 9h2'/>",
     "compass": "<circle cx='12' cy='12' r='9'/><path d='M16 8l-3 6-6 3 3-6z'/>",
+    "camera": "<path d='M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z'/><circle cx='12' cy='13' r='4'/>",
 }
 
 _MENU_COORDENACAO = [
     {"nome": "Pedagógico", "itens": [
         {"label": "Turmas", "endpoint": "turmas.index", "icone": "grid"},
+        {"label": "Educação Infantil", "endpoint": "observacoes_infantil.index", "icone": "camera"},
         {"label": "Radar da Coordenação", "endpoint": "radar_coordenacao.index", "icone": "activity"},
         {"label": "Coordenador de Professores", "endpoint": "coordenador_professores.index", "icone": "layers"},
         {"label": "Relatório de Professores", "endpoint": "coordenador_professores.relatorio_professores", "icone": "bar-chart"},
@@ -101,6 +103,7 @@ MENU_POR_PAPEL = {
     "professor": [
         {"nome": "Turmas", "itens": [
             {"label": "Turmas", "endpoint": "turmas.index", "icone": "grid"},
+            {"label": "Educação Infantil", "endpoint": "observacoes_infantil.index", "icone": "camera"},
             {"label": "Coordenador de Professores", "endpoint": "coordenador_professores.index", "icone": "layers"},
             {"label": "Diagnósticos p/ Revisar", "endpoint": "coordenador_professores.pendencias", "icone": "target"},
         ]},
@@ -115,6 +118,7 @@ MENU_POR_PAPEL = {
     "psicopedagoga": [
         {"nome": "Pedagógico", "itens": [
             {"label": "Turmas", "endpoint": "turmas.index", "icone": "grid"},
+            {"label": "Educação Infantil", "endpoint": "observacoes_infantil.index", "icone": "camera"},
             {"label": "Inclusão", "endpoint": "inclusao.index", "icone": "shield"},
         ]},
         {"nome": "Apoio", "itens": [
@@ -124,6 +128,7 @@ MENU_POR_PAPEL = {
     "familia": [
         {"nome": "Acompanhamento", "itens": [
             {"label": "Relatórios", "endpoint": "relatorios_familia.index", "icone": "file-text"},
+            {"label": "Educação Infantil", "endpoint": "observacoes_infantil.familia_index", "icone": "camera"},
         ]},
     ],
 }
@@ -146,6 +151,7 @@ def create_app():
     app.register_blueprint(gestao_usuarios.bp)
     app.register_blueprint(coordenador_professores.bp)
     app.register_blueprint(turmas.bp)
+    app.register_blueprint(observacoes_infantil.bp)
 
     @app.context_processor
     def _injetar_layout():
@@ -158,8 +164,19 @@ def create_app():
         db = get_db()
         escola = db.execute("select nome from escolas where id = ?", (u["escola_id"],)).fetchone()
         segmento = escopo_etapa(u)
+        menu = MENU_POR_PAPEL.get(u["papel"], [])
+        # Uma coordenação escopada a um segmento que não é infantil não deve
+        # nem ver o item "Educação Infantil" no menu — a rota já bloqueia o
+        # acesso (ver _turmas_infantil_visiveis em
+        # app/modules/observacoes_infantil.py), mas escondê-lo aqui evita um
+        # link que sempre levaria a uma lista vazia.
+        if u["papel"] == "coordenador" and segmento and segmento != "infantil":
+            menu = [
+                {**secao, "itens": [i for i in secao["itens"] if i["endpoint"] != "observacoes_infantil.index"]}
+                for secao in menu
+            ]
         return {
-            "menu_lateral": MENU_POR_PAPEL.get(u["papel"], []),
+            "menu_lateral": menu,
             "papel_label": PAPEIS_LABEL.get(u["papel"], u["papel"].capitalize()),
             "escola_atual": escola["nome"] if escola else None,
             "segmento_atual": SEGMENTOS_LABEL.get(segmento) if segmento else None,
