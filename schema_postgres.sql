@@ -114,11 +114,21 @@ create table diagnostico_respostas (
 );
 
 -- ---------- módulos futuros já preparados no mesmo banco (ligados por aluno/turma) ----------
+-- Redação: o aluno envia uma FOTO da redação manuscrita (decisão do usuário,
+-- migration redacoes_envio_por_foto — não digita mais o texto na tela).
+-- 'texto' fica NULL até um provedor de IA com visão (Gemini, decidido para
+-- o futuro) transcrever e corrigir; até lá 'status' fica 'aguardando_ia' e
+-- nota_c1..c5/feedback_ia ficam NULL. 'arquivo_caminho'/'arquivo_content_type'
+-- guardam onde a foto está no Supabase Storage (bucket privado 'redacoes',
+-- migration create_bucket_redacoes — mesmo padrão do M7.1, ver app/storage.py).
 create table redacoes (
     id            uuid primary key default gen_random_uuid(),
     aluno_id      uuid not null references alunos(id) on delete cascade,
     tema          text,
-    texto         text not null,
+    texto         text,
+    arquivo_caminho text,
+    arquivo_content_type text,
+    status        text not null default 'aguardando_ia' check (status in ('aguardando_ia','corrigida')),
     nota_c1 int, nota_c2 int, nota_c3 int, nota_c4 int, nota_c5 int,
     feedback_ia   text,
     criado_em     timestamptz not null default now()
