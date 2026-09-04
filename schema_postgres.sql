@@ -179,9 +179,29 @@ create table observacoes_infantil (
     criado_em     timestamptz not null default now()
 );
 
+-- Calendário escolar: eventos que aparecem no painel inicial de todo mundo
+-- (widget "Próximos eventos") e na tela cheia app/modules/calendario.py.
+-- 'publico' decide quem enxerga cada evento; 'segmento' é opcional e
+-- reaproveita os mesmos valores de series.etapa — um evento sem segmento
+-- (NULL) aparece pra todo mundo daquele público, independente da etapa.
+-- Só coordenação/direção/direção pedagógica cadastram e excluem eventos
+-- (ver PAPEIS_DIRECAO em app/auth.py) — todos os outros papéis só leem.
+create table eventos_escolares (
+    id            uuid primary key default gen_random_uuid(),
+    escola_id     uuid not null references escolas(id) on delete cascade,
+    titulo        text not null,
+    descricao     text,
+    data_evento   date not null,
+    publico       text not null default 'todos' check (publico in ('todos','alunos','professores','coordenacao','familias')),
+    segmento      text,
+    criado_por_usuario_id uuid not null references usuarios(id),
+    criado_em     timestamptz not null default now()
+);
+
 create index idx_diag_aluno on diagnosticos(aluno_id);
 create index idx_resp_diag on diagnostico_respostas(diagnostico_id);
 create index idx_alunos_turma on alunos(turma_id);
 create index idx_radar_turma on alertas_radar(turma_id);
 create index idx_obs_infantil_aluno on observacoes_infantil(aluno_id);
 create index idx_obs_infantil_turma on observacoes_infantil(turma_id);
+create index idx_eventos_escola_data on eventos_escolares(escola_id, data_evento);
