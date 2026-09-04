@@ -257,10 +257,10 @@ def resultado(disciplina):
     if diag["acertos"] / TOTAL_QUESTOES < 0.4:
         aluno = db.execute("select * from alunos where id = ?", (diag["aluno_id"],)).fetchone()
         db.execute(
-            "insert into alertas_radar (id, turma_id, aluno_id, nivel, motivo) values (?,?,?,?,?)",
+            "insert into alertas_radar (id, turma_id, aluno_id, nivel, motivo, diagnostico_id) values (?,?,?,?,?,?)",
             (new_id(), aluno["turma_id"], aluno["id"], "alto",
              f"Diagnóstico adaptativo de {nome_disciplina} com {diag['acertos']}/{TOTAL_QUESTOES} acertos "
-             f"(nível {nivel_final:.1f}/5)."),
+             f"(nível {nivel_final:.1f}/5).", diag["id"]),
         )
         db.commit()
 
