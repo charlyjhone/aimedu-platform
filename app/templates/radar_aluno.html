@@ -32,7 +32,7 @@
   <p style="color:#666; font-size:0.85rem;">Estes dados vêm direto do módulo de Diagnóstico Adaptativo — é o mesmo banco, sem integração à parte.</p>
   {% if diagnosticos %}
   <table>
-    <tr><th>Disciplina</th><th>Iniciado em</th><th>Finalizado em</th><th>Nível final</th><th>Revisão</th></tr>
+    <tr><th>Disciplina</th><th>Iniciado em</th><th>Finalizado em</th><th>Nível final</th><th>Revisão</th><th></th></tr>
     {% for d in diagnosticos %}
     <tr>
       <td>{{ d['disciplina']|disciplina }}</td>
@@ -46,6 +46,11 @@
         <span class="tag nivel-baixo">Revisado</span>
         {% else %}
         <span class="tag nivel-medio">Aguardando revisão</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if d['finalizado_em'] %}
+        <a href="{{ url_for('coordenador_professores.revisar_diagnostico', diagnostico_id=d['id']) }}">Ver diagnóstico completo</a>
         {% endif %}
       </td>
     </tr>
