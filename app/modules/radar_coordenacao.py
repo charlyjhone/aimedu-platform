@@ -84,20 +84,3 @@
           <input type="hidden" name="nivel" value="{{ nivel_filtro }}">
           <input type="hidden" name="status" value="{{ status_filtro }}">
           {% if a['resolvido'] %}
-          <input type="hidden" name="acao" value="reabrir">
-          <button class="botao" type="submit" style="background:#3a6b8a;">Reabrir</button>
-          {% else %}
-          <input type="hidden" name="acao" value="resolver">
-          <button class="botao" type="submit">Marcar resolvido</button>
-          {% endif %}
-        </form>
-      </td>
-    </tr>
-    {% endfor %}
-  </table>
-  {% else %}
-  <p>Nenhum alerta encontrado para esse filtro.</p>
-  {% endif %}
-</div>
-
-{% endblock %}
