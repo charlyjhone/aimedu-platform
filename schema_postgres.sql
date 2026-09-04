@@ -141,7 +141,13 @@ create table alertas_radar (
     nivel         text not null check (nivel in ('baixo','medio','alto')),
     motivo        text not null,
     criado_em     timestamptz not null default now(),
-    resolvido     boolean not null default false
+    resolvido     boolean not null default false,
+    -- Opcional: só é preenchido quando o alerta nasce de um diagnóstico
+    -- adaptativo (ver app/modules/diagnostico.py). Permite ao Radar da
+    -- Coordenação linkar direto pro diagnóstico completo (eixo por eixo)
+    -- sem precisar abrir a página do aluno primeiro. Alertas de outras
+    -- origens (ex: futura Redação) continuam com isso null, normalmente.
+    diagnostico_id uuid references diagnosticos(id) on delete set null
 );
 
 create table relatorios_familia (
