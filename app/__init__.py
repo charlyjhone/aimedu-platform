@@ -1,12 +1,27 @@
 import os
+import calendar as calendar_stdlib
+from datetime import datetime, timezone
 from flask import Flask, session
 
 from .db import init_db, get_db
 from . import auth
 from .auth import escopo_etapa, PAPEIS_DIRECAO
-from .modules import diagnostico, radar_coordenacao, bussola_vocacional, redacao, relatorios_familia, inclusao, gestao_usuarios, coordenador_professores, turmas, observacoes_infantil
+from .modules import diagnostico, radar_coordenacao, bussola_vocacional, redacao, relatorios_familia, inclusao, gestao_usuarios, coordenador_professores, turmas, observacoes_infantil, calendario
 from .modules.gestao_usuarios import PAPEIS_LABEL, SEGMENTOS_LABEL
+from .modules.calendario import _publicos_visiveis, _segmento_do_usuario, _eventos_visiveis, _dias_do_mes_com_evento
 from .ai_engine import NOMES_DISCIPLINA
+
+_DIAS_SEMANA = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"]
+_MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho",
+          "agosto", "setembro", "outubro", "novembro", "dezembro"]
+
+
+def _data_extensa():
+    """Data de hoje por extenso em português, sem depender de locale do
+    sistema operacional (que pode não ter pt_BR instalado) — usada no
+    cabeçalho de boas-vindas de todo painel inicial (ver _painel_topo.html)."""
+    hoje = datetime.now(timezone.utc)
+    return f"{_DIAS_SEMANA[hoje.weekday()]}, {hoje.day} de {_MESES[hoje.month - 1]} de {hoje.year}"
 
 
 def _fmt_data(valor):
@@ -56,6 +71,7 @@ ICONES_SVG = {
     "file-text": "<path d='M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z'/><path d='M14 2v6h6'/><path d='M8 13h8M8 17h8M8 9h2'/>",
     "compass": "<circle cx='12' cy='12' r='9'/><path d='M16 8l-3 6-6 3 3-6z'/>",
     "camera": "<path d='M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z'/><circle cx='12' cy='13' r='4'/>",
+    "calendar": "<rect x='3' y='4' width='18' height='18' rx='2'/><path d='M16 2v4M8 2v4M3 10h18'/>",
 }
 
 _MENU_COORDENACAO = [
@@ -152,6 +168,7 @@ def create_app():
     app.register_blueprint(coordenador_professores.bp)
     app.register_blueprint(turmas.bp)
     app.register_blueprint(observacoes_infantil.bp)
+    app.register_blueprint(calendario.bp)
 
     @app.context_processor
     def _injetar_layout():
@@ -175,12 +192,36 @@ def create_app():
                 {**secao, "itens": [i for i in secao["itens"] if i["endpoint"] != "observacoes_infantil.index"]}
                 for secao in menu
             ]
+        # Próximos eventos do calendário (ver app/modules/calendario.py) —
+        # calculado aqui, uma vez só, pra alimentar o widget "Próximos
+        # eventos" no topo de todo painel inicial (_painel_topo.html) sem
+        # que auth.painel() nem cada módulo precisem saber desse cálculo.
+        publicos = _publicos_visiveis(u["papel"])
+        segmento_eventos = _segmento_do_usuario(db, u)
+        eventos_proximos = _eventos_visiveis(db, u["escola_id"], publicos, segmento_eventos, limite=5)
+        # Mini calendário visual do mês atual (topo de todo painel inicial —
+        # ver _painel_topo.html). 'firstweekday=6' começa a semana no domingo,
+        # como é costume no Brasil; dias de fora do mês vêm como 0 e o
+        # template simplesmente não desenha nada nessas células.
+        hoje_date = datetime.now(timezone.utc).date()
+        dias_com_evento = _dias_do_mes_com_evento(
+            db, u["escola_id"], publicos, segmento_eventos, hoje_date.year, hoje_date.month
+        )
+        calendario_mes = {
+            "nome_mes": f"{_MESES[hoje_date.month - 1].capitalize()} de {hoje_date.year}",
+            "semanas": calendar_stdlib.Calendar(firstweekday=6).monthdayscalendar(hoje_date.year, hoje_date.month),
+            "dia_hoje": hoje_date.day,
+            "dias_com_evento": dias_com_evento,
+        }
         return {
             "menu_lateral": menu,
             "papel_label": PAPEIS_LABEL.get(u["papel"], u["papel"].capitalize()),
             "escola_atual": escola["nome"] if escola else None,
             "segmento_atual": SEGMENTOS_LABEL.get(segmento) if segmento else None,
             "icones_svg": ICONES_SVG,
+            "hoje_extenso": _data_extensa(),
+            "eventos_proximos": eventos_proximos,
+            "calendario_mes": calendario_mes,
         }
 
     return app
