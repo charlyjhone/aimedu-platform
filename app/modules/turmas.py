@@ -56,7 +56,14 @@ def _turmas_visiveis(db):
     Coordenação vê todas, A NÃO SER que tenha um segmento (etapa) definido —
     nesse caso só as turmas daquele segmento (ver escopo_etapa em app/auth.py).
     Professor só as turmas em que dá aula — mesmo critério de
-    app.modules.inclusao._alunos_visiveis, só que agrupado por turma."""
+    app.modules.inclusao._alunos_visiveis, só que agrupado por turma.
+
+    Traz também serie_id/serie_etapa/serie_ordem (antes só serie_nome) e
+    ordena por s.ordem antes de t.nome — não para mudar quem vê o quê, e sim
+    para dar à tela (ver _agrupar_por_serie) o que precisa para agrupar as
+    turmas por série na mesma ordem pedagógica (Infantil → Fund1 → Fund2 →
+    Médio) já usada em turmas.gestao(), em vez da lista única e plana de
+    antes."""
     u = usuario_logado()
     escola_id = _escola_id_atual()
 
@@ -64,17 +71,19 @@ def _turmas_visiveis(db):
         segmento = escopo_etapa(u)
         if segmento:
             return db.execute(
-                "select t.id, t.nome, t.ano_letivo, s.nome as serie_nome, "
+                "select t.id, t.nome, t.ano_letivo, s.id as serie_id, s.nome as serie_nome, "
+                "s.etapa as serie_etapa, s.ordem as serie_ordem, "
                 "(select count(*) from alunos a where a.turma_id = t.id) as total_alunos "
                 "from turmas t join series s on s.id = t.serie_id "
-                "where s.escola_id = ? and s.etapa = ? order by t.nome",
+                "where s.escola_id = ? and s.etapa = ? order by s.ordem, t.nome",
                 (escola_id, segmento),
             ).fetchall()
         return db.execute(
-            "select t.id, t.nome, t.ano_letivo, s.nome as serie_nome, "
+            "select t.id, t.nome, t.ano_letivo, s.id as serie_id, s.nome as serie_nome, "
+            "s.etapa as serie_etapa, s.ordem as serie_ordem, "
             "(select count(*) from alunos a where a.turma_id = t.id) as total_alunos "
             "from turmas t join series s on s.id = t.serie_id "
-            "where s.escola_id = ? order by t.nome",
+            "where s.escola_id = ? order by s.ordem, t.nome",
             (escola_id,),
         ).fetchall()
 
@@ -83,10 +92,11 @@ def _turmas_visiveis(db):
         return []
     placeholders = ",".join("?" for _ in turma_ids)
     return db.execute(
-        f"select t.id, t.nome, t.ano_letivo, s.nome as serie_nome, "
+        f"select t.id, t.nome, t.ano_letivo, s.id as serie_id, s.nome as serie_nome, "
+        f"s.etapa as serie_etapa, s.ordem as serie_ordem, "
         f"(select count(*) from alunos a where a.turma_id = t.id) as total_alunos "
         f"from turmas t join series s on s.id = t.serie_id "
-        f"where t.id in ({placeholders}) order by t.nome",
+        f"where t.id in ({placeholders}) order by s.ordem, t.nome",
         tuple(turma_ids),
     ).fetchall()
 
@@ -95,6 +105,30 @@ def _turma_visivel(db, turma_id):
     """Confere se o usuário logado pode ver esta turma específica — mesma
     regra de _turmas_visiveis, para uma turma só."""
     return next((t for t in _turmas_visiveis(db) if t["id"] == turma_id), None)
+
+
+def _agrupar_por_serie(turmas):
+    """Agrupa a lista (já ordenada por s.ordem, t.nome) de turmas visíveis em
+    blocos por série, na mesma forma que turmas_gestao.html já usa (ver
+    _series_com_turmas acima) — assim a tela de listagem (turmas_index.html,
+    vista por professor/coordenação/psicopedagoga/direção) fica com a mesma
+    organização visual da tela de estrutura (turmas_gestao.html, só
+    direção), em vez da lista única e plana de antes. Como 'turmas' já veio
+    filtrado por quem pode ver o quê, esta função só reagrupa — não repete
+    nenhuma checagem de permissão."""
+    grupos = []
+    grupo_atual = None
+    for t in turmas:
+        if grupo_atual is None or grupo_atual["serie_id"] != t["serie_id"]:
+            grupo_atual = {
+                "serie_id": t["serie_id"],
+                "serie_nome": t["serie_nome"],
+                "serie_etapa": t["serie_etapa"],
+                "turmas": [],
+            }
+            grupos.append(grupo_atual)
+        grupo_atual["turmas"].append(t)
+    return grupos
 
 
 def _links_do_aluno(papel, aluno_id, usuario_id):
@@ -124,7 +158,12 @@ def _alunos_da_turma(db, turma_id):
 def index():
     db = get_db()
     turmas = _turmas_visiveis(db)
-    return render_template("turmas_index.html", turmas=turmas)
+    grupos = _agrupar_por_serie(turmas)
+    total_alunos = sum(t["total_alunos"] for t in turmas)
+    return render_template(
+        "turmas_index.html", grupos=grupos, total_turmas=len(turmas), total_alunos=total_alunos,
+        segmentos_label=SEGMENTOS_LABEL,
+    )
 
 
 @bp.route("/<turma_id>")
