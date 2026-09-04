@@ -1,21 +1,25 @@
 {% extends "base.html" %}
 {% block titulo %}Painel do professor — AIM.Edu{% endblock %}
 {% block conteudo %}
-<div class="card">
-  <h2>Coordenador de Professores por IA</h2>
-  <p>Veja o desempenho das suas turmas (Diagnóstico de Matemática, Redação e Radar), receba sugestões pedagógicas e tire dúvidas sobre o sistema.</p>
-  <a class="botao" href="{{ url_for('coordenador_professores.index') }}">Abrir Coordenador de Professores</a>
-</div>
+{% include "_painel_topo.html" %}
 
-<div class="card">
-  <h2>Turmas</h2>
-  <p>Veja as turmas em que você dá aula e a lista de alunos matriculados em cada uma.</p>
-  <a class="botao" href="{{ url_for('turmas.index') }}">Abrir Turmas</a>
-</div>
+<div class="grade-cartoes">
+  <div class="card">
+    <h2>Coordenador de Professores por IA</h2>
+    <p>Veja o desempenho das suas turmas (Diagnóstico de Matemática, Redação e Radar), receba sugestões pedagógicas e tire dúvidas sobre o sistema.</p>
+    <a class="botao" href="{{ url_for('coordenador_professores.index') }}">Abrir Coordenador de Professores</a>
+  </div>
 
-<div class="card">
-  <h2>Inclusão</h2>
-  <p>Consulte as necessidades específicas e adaptações registradas para os alunos das suas turmas.</p>
-  <a class="botao" href="{{ url_for('inclusao.index') }}">Abrir cadastro de Inclusão</a>
+  <div class="card">
+    <h2>Turmas</h2>
+    <p>Veja as turmas em que você dá aula e a lista de alunos matriculados em cada uma.</p>
+    <a class="botao" href="{{ url_for('turmas.index') }}">Abrir Turmas</a>
+  </div>
+
+  <div class="card">
+    <h2>Inclusão</h2>
+    <p>Consulte as necessidades específicas e adaptações registradas para os alunos das suas turmas.</p>
+    <a class="botao" href="{{ url_for('inclusao.index') }}">Abrir cadastro de Inclusão</a>
+  </div>
 </div>
 {% endblock %}
