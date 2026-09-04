@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block titulo %}Meus filhos — AIM.Edu{% endblock %}
 {% block conteudo %}
+{% include "_painel_topo.html" %}
+
 <div class="card">
   <h2>Alunos vinculados à sua conta</h2>
   {% if alunos %}
