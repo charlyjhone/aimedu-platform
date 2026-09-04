@@ -1,4 +1,5 @@
-"""
+```python
+\"\"\"
 Camada de banco de dados do AIM.Edu.
 
 Se a variável de ambiente DATABASE_URL estiver definida, conecta no Postgres
@@ -7,10 +8,10 @@ camada não precisa recriá-lo. Sem essa variável, usa SQLite local (modo de
 demonstração, sem depender de internet).
 
 Todas as consultas em auth.py, app/modules/*.py e seed_data.py usam SQL
-parametrizado com "?" de propósito — a classe _PGConnection abaixo traduz
-isso para "%s" na hora de falar com o Postgres, então nenhum desses arquivos
+parametrizado com \"?\" de propósito — a classe _PGConnection abaixo traduz
+isso para \"%s\" na hora de falar com o Postgres, então nenhum desses arquivos
 precisa saber qual banco está por trás.
-"""
+\"\"\"
 import os
 import sqlite3
 import uuid
@@ -234,6 +235,25 @@ create table if not exists observacoes_infantil (
     status text not null default 'aguardando_ia' check (status in ('aguardando_ia','processado')),
     criado_em text not null default (datetime('now'))
 );
+
+-- Calendário escolar: eventos que aparecem no painel inicial de todo mundo
+-- (widget "Próximos eventos") e na tela cheia app/modules/calendario.py.
+-- 'publico' decide quem enxerga cada evento; 'segmento' é opcional e
+-- reaproveita os mesmos valores de series.etapa — um evento sem segmento
+-- (NULL) aparece pra todo mundo daquele público, independente da etapa.
+-- Só coordenação/direção/direção pedagógica cadastram e excluem eventos
+-- (ver PAPEIS_DIRECAO em app/auth.py) — todos os outros papéis só leem.
+create table if not exists eventos_escolares (
+    id text primary key,
+    escola_id text not null references escolas(id),
+    titulo text not null,
+    descricao text,
+    data_evento text not null,
+    publico text not null default 'todos' check (publico in ('todos','alunos','professores','coordenacao','familias')),
+    segmento text,
+    criado_por_usuario_id text not null references usuarios(id),
+    criado_em text not null default (datetime('now'))
+);
 """
 
 
@@ -307,3 +327,4 @@ def init_db(app):
         conn = get_db()
         conn.executescript(SCHEMA_SQLITE)
         conn.commit()
+```
