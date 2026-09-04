@@ -1,230 +1,103 @@
-"""
-Módulo do AIM.Edu: Radar da Coordenação (versão expandida).
+{% extends "base.html" %}
+{% block titulo %}Radar da Coordenação — AIM.Edu{% endblock %}
+{% block conteudo %}
 
-Antes, o painel da coordenação só listava os alertas ainda não resolvidos,
-sem filtro nem histórico. Este módulo adiciona:
-  - Filtros por turma, nível de gravidade e status (pendente/resolvido/todos).
-  - Contadores por nível, para a coordenação priorizar de olho rápido.
-  - Ação de marcar um alerta como resolvido (e reabrir, se for engano).
-  - Uma página por aluno que junta, num só lugar, os alertas dele E o
-    histórico de diagnósticos adaptativos (de qualquer disciplina) — a prova
-    visual de que o Radar "conversa" com o módulo de Diagnóstico Adaptativo
-    pelo mesmo banco, sem nenhuma integração especial entre os dois: é tudo
-    uma coisa só.
+<div class="card">
+  <h2>Radar da Coordenação</h2>
+  <p style="color:#666; font-size:0.85rem;">Alertas pedagógicos gerados automaticamente pelos módulos do sistema (hoje: Diagnóstico Adaptativo) sempre que um aluno precisa de atenção.</p>
 
-Este módulo é só de leitura/gestão de alertas — quem CRIA um alerta continua
-sendo cada módulo pedagógico (hoje o Diagnóstico Adaptativo e a Redação),
-inserindo direto na tabela alertas_radar. Isso é proposital: o Radar é o painel comum
-por onde qualquer módulo futuro (redação, bússola, inclusão etc.) pode avisar
-a coordenação, sem precisar conhecer os outros módulos.
-"""
-from flask import Blueprint, render_template, redirect, url_for, request, flash
+  <div style="display:flex; gap:14px; flex-wrap:wrap; margin-top:14px;">
+    <div style="background:#fdecea; border-radius:10px; padding:12px 20px; min-width:110px;">
+      <div style="font-size:1.4rem; font-weight:700; color:var(--vermelho);">{{ contagem.alto }}</div>
+      <div style="font-size:0.78rem; color:var(--texto-suave);">nível alto</div>
+    </div>
+    <div style="background:#fff8e1; border-radius:10px; padding:12px 20px; min-width:110px;">
+      <div style="font-size:1.4rem; font-weight:700; color:var(--amarelo);">{{ contagem.medio }}</div>
+      <div style="font-size:0.78rem; color:var(--texto-suave);">nível médio</div>
+    </div>
+    <div style="background:#eaf6ec; border-radius:10px; padding:12px 20px; min-width:110px;">
+      <div style="font-size:1.4rem; font-weight:700; color:var(--verde);">{{ contagem.baixo }}</div>
+      <div style="font-size:0.78rem; color:var(--texto-suave);">nível baixo</div>
+    </div>
+    <div style="display:flex; align-items:center; font-size:0.85rem; color:var(--texto-suave);">pendentes de análise agora</div>
+  </div>
 
-from ..db import get_db
-from ..auth import login_obrigatorio, usuario_logado, escopo_etapa, PAPEIS_DIRECAO
+  <form method="get" style="display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; margin-top:20px;">
+    <div>
+      <label for="turma">Turma</label>
+      <select name="turma" id="turma">
+        <option value="">Todas</option>
+        {% for t in turmas %}
+        <option value="{{ t['id'] }}" {% if turma_filtro == t['id'] %}selected{% endif %}>{{ t['nome'] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="nivel">Nível</label>
+      <select name="nivel" id="nivel">
+        <option value="">Todos</option>
+        <option value="alto" {% if nivel_filtro == 'alto' %}selected{% endif %}>Alto</option>
+        <option value="medio" {% if nivel_filtro == 'medio' %}selected{% endif %}>Médio</option>
+        <option value="baixo" {% if nivel_filtro == 'baixo' %}selected{% endif %}>Baixo</option>
+      </select>
+    </div>
+    <div>
+      <label for="status">Status</label>
+      <select name="status" id="status">
+        <option value="pendente" {% if status_filtro == 'pendente' %}selected{% endif %}>Pendentes</option>
+        <option value="resolvido" {% if status_filtro == 'resolvido' %}selected{% endif %}>Resolvidos</option>
+        <option value="todos" {% if status_filtro == 'todos' %}selected{% endif %}>Todos</option>
+      </select>
+    </div>
+    <div>
+      <button class="botao" type="submit">Filtrar</button>
+    </div>
+  </form>
+</div>
 
-bp = Blueprint("radar_coordenacao", __name__, url_prefix="/coordenacao/radar")
+<div class="card">
+  {% if alertas %}
+  <table>
+    <tr><th>Turma</th><th>Aluno</th><th>Nível</th><th>Motivo</th><th>Data</th><th>Status</th><th></th><th></th></tr>
+    {% for a in alertas %}
+    <tr>
+      <td>{{ a['turma_nome'] }}</td>
+      <td>
+        {% if a['aluno_id'] %}
+        <a href="{{ url_for('radar_coordenacao.aluno', aluno_id=a['aluno_id']) }}">{{ a['aluno_nome'] or '—' }}</a>
+        {% else %}
+        —
+        {% endif %}
+      </td>
+      <td class="nivel-{{ a['nivel'] }}">{{ a['nivel']|capitalize }}</td>
+      <td>{{ a['motivo'] }}</td>
+      <td>{{ a['criado_em']|data }}</td>
+      <td>{{ 'Resolvido' if a['resolvido'] else 'Pendente' }}</td>
+      <td>
+        {% if a['diagnostico_id'] %}
+        <a href="{{ url_for('coordenador_professores.revisar_diagnostico', diagnostico_id=a['diagnostico_id']) }}">Ver diagnóstico completo</a>
+        {% endif %}
+      </td>
+      <td>
+        <form method="post" action="{{ url_for('radar_coordenacao.marcar', alerta_id=a['id']) }}">
+          <input type="hidden" name="turma" value="{{ turma_filtro }}">
+          <input type="hidden" name="nivel" value="{{ nivel_filtro }}">
+          <input type="hidden" name="status" value="{{ status_filtro }}">
+          {% if a['resolvido'] %}
+          <input type="hidden" name="acao" value="reabrir">
+          <button class="botao" type="submit" style="background:#3a6b8a;">Reabrir</button>
+          {% else %}
+          <input type="hidden" name="acao" value="resolver">
+          <button class="botao" type="submit">Marcar resolvido</button>
+          {% endif %}
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>Nenhum alerta encontrado para esse filtro.</p>
+  {% endif %}
+</div>
 
-NIVEIS_VALIDOS = ("alto", "medio", "baixo")
-STATUS_VALIDOS = ("pendente", "resolvido", "todos")
-
-
-def _escola_id_atual():
-    return usuario_logado()["escola_id"]
-
-
-def _turmas_da_escola(db, escola_id, segmento=None):
-    if segmento:
-        return db.execute(
-            "select t.id, t.nome from turmas t "
-            "join series s on s.id = t.serie_id "
-            "where s.escola_id = ? and s.etapa = ? order by t.nome",
-            (escola_id, segmento),
-        ).fetchall()
-    return db.execute(
-        "select t.id, t.nome from turmas t "
-        "join series s on s.id = t.serie_id "
-        "where s.escola_id = ? order by t.nome",
-        (escola_id,),
-    ).fetchall()
-
-
-def _contagem_por_nivel(db, escola_id, segmento=None):
-    """Usado tanto por este módulo quanto pelo painel de auth.painel() —
-    'segmento' é opcional de propósito: o painel de direção/psicopedagoga
-    chama sem segmento (vê tudo), e este módulo passa o segmento do
-    coordenador logado quando ele tiver um definido."""
-    if segmento:
-        linhas = db.execute(
-            "select a.nivel, count(*) c from alertas_radar a "
-            "join turmas t on t.id = a.turma_id "
-            "join series s on s.id = t.serie_id "
-            "where s.escola_id = ? and s.etapa = ? and a.resolvido = false "
-            "group by a.nivel",
-            (escola_id, segmento),
-        ).fetchall()
-    else:
-        linhas = db.execute(
-            "select a.nivel, count(*) c from alertas_radar a "
-            "join turmas t on t.id = a.turma_id "
-            "join series s on s.id = t.serie_id "
-            "where s.escola_id = ? and a.resolvido = false "
-            "group by a.nivel",
-            (escola_id,),
-        ).fetchall()
-    contagem = {"alto": 0, "medio": 0, "baixo": 0}
-    for linha in linhas:
-        if linha["nivel"] in contagem:
-            contagem[linha["nivel"]] = linha["c"]
-    return contagem
-
-
-@bp.route("/")
-@login_obrigatorio(papeis=["coordenador"] + list(PAPEIS_DIRECAO))
-def index():
-    db = get_db()
-    escola_id = _escola_id_atual()
-    segmento = escopo_etapa(usuario_logado())
-
-    turma_filtro = request.args.get("turma", "").strip()
-    nivel_filtro = request.args.get("nivel", "").strip()
-    status_filtro = request.args.get("status", "pendente").strip()
-    if status_filtro not in STATUS_VALIDOS:
-        status_filtro = "pendente"
-
-    condicoes = ["s.escola_id = ?"]
-    params = [escola_id]
-
-    if segmento:
-        condicoes.append("s.etapa = ?")
-        params.append(segmento)
-    if turma_filtro:
-        condicoes.append("t.id = ?")
-        params.append(turma_filtro)
-    if nivel_filtro in NIVEIS_VALIDOS:
-        condicoes.append("a.nivel = ?")
-        params.append(nivel_filtro)
-    if status_filtro == "pendente":
-        condicoes.append("a.resolvido = false")
-    elif status_filtro == "resolvido":
-        condicoes.append("a.resolvido = true")
-    # "todos" não adiciona condição de status
-
-    sql = (
-        "select a.*, t.nome as turma_nome, us.nome as aluno_nome "
-        "from alertas_radar a "
-        "join turmas t on t.id = a.turma_id "
-        "join series s on s.id = t.serie_id "
-        "left join alunos al on al.id = a.aluno_id "
-        "left join usuarios us on us.id = al.usuario_id "
-        "where " + " and ".join(condicoes) +
-        " order by a.resolvido asc, "
-        "case a.nivel when 'alto' then 0 when 'medio' then 1 else 2 end, "
-        "a.criado_em desc"
-    )
-    alertas = db.execute(sql, tuple(params)).fetchall()
-
-    return render_template(
-        "radar_coordenacao.html",
-        alertas=alertas,
-        turmas=_turmas_da_escola(db, escola_id, segmento),
-        contagem=_contagem_por_nivel(db, escola_id, segmento),
-        turma_filtro=turma_filtro,
-        nivel_filtro=nivel_filtro,
-        status_filtro=status_filtro,
-    )
-
-
-@bp.route("/<alerta_id>/marcar", methods=["POST"])
-@login_obrigatorio(papeis=["coordenador"] + list(PAPEIS_DIRECAO))
-def marcar(alerta_id):
-    db = get_db()
-    escola_id = _escola_id_atual()
-    segmento = escopo_etapa(usuario_logado())
-    acao = request.form.get("acao")
-    novo_valor = True if acao == "resolver" else False
-
-    # Confirma que o alerta pertence à mesma escola (e, se for coordenador
-    # escopado, ao mesmo segmento) antes de mexer.
-    if segmento:
-        alerta = db.execute(
-            "select a.id from alertas_radar a "
-            "join turmas t on t.id = a.turma_id "
-            "join series s on s.id = t.serie_id "
-            "where a.id = ? and s.escola_id = ? and s.etapa = ?",
-            (alerta_id, escola_id, segmento),
-        ).fetchone()
-    else:
-        alerta = db.execute(
-            "select a.id from alertas_radar a "
-            "join turmas t on t.id = a.turma_id "
-            "join series s on s.id = t.serie_id "
-            "where a.id = ? and s.escola_id = ?",
-            (alerta_id, escola_id),
-        ).fetchone()
-    if not alerta:
-        flash("Alerta não encontrado.", "erro")
-    else:
-        db.execute("update alertas_radar set resolvido = ? where id = ?", (novo_valor, alerta_id))
-        db.commit()
-        flash("Alerta marcado como resolvido." if novo_valor else "Alerta reaberto.", "ok")
-
-    return redirect(url_for(
-        "radar_coordenacao.index",
-        turma=request.form.get("turma", ""),
-        nivel=request.form.get("nivel", ""),
-        status=request.form.get("status", "pendente"),
-    ))
-
-
-@bp.route("/aluno/<aluno_id>")
-@login_obrigatorio(papeis=["coordenador"] + list(PAPEIS_DIRECAO))
-def aluno(aluno_id):
-    db = get_db()
-    escola_id = _escola_id_atual()
-    segmento = escopo_etapa(usuario_logado())
-
-    if segmento:
-        aluno_row = db.execute(
-            "select al.id, us.nome as nome, t.nome as turma_nome "
-            "from alunos al "
-            "join usuarios us on us.id = al.usuario_id "
-            "join turmas t on t.id = al.turma_id "
-            "join series s on s.id = t.serie_id "
-            "where al.id = ? and s.escola_id = ? and s.etapa = ?",
-            (aluno_id, escola_id, segmento),
-        ).fetchone()
-    else:
-        aluno_row = db.execute(
-            "select al.id, us.nome as nome, t.nome as turma_nome "
-            "from alunos al "
-            "join usuarios us on us.id = al.usuario_id "
-            "join turmas t on t.id = al.turma_id "
-            "join series s on s.id = t.serie_id "
-            "where al.id = ? and s.escola_id = ?",
-            (aluno_id, escola_id),
-        ).fetchone()
-    if not aluno_row:
-        flash("Aluno não encontrado.", "erro")
-        return redirect(url_for("radar_coordenacao.index"))
-
-    alertas = db.execute(
-        "select * from alertas_radar where aluno_id = ? order by criado_em desc",
-        (aluno_id,),
-    ).fetchall()
-    diagnosticos = db.execute(
-        "select * from diagnosticos where aluno_id = ? order by iniciado_em desc",
-        (aluno_id,),
-    ).fetchall()
-    redacoes = db.execute(
-        "select * from redacoes where aluno_id = ? order by criado_em desc",
-        (aluno_id,),
-    ).fetchall()
-
-    return render_template(
-        "radar_aluno.html",
-        aluno=aluno_row,
-        alertas=alertas,
-        diagnosticos=diagnosticos,
-        redacoes=redacoes,
-    )
+{% endblock %}
