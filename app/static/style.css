@@ -223,6 +223,31 @@ tr:last-child td { border-bottom: none; }
 .nivel-baixo { color: var(--verde); font-weight: bold; }
 .eixo-row span.barra-mini { display: inline-block; height: 6px; background: var(--azul); border-radius: 3px; vertical-align: middle; }
 
+/* Mini calendário do mês, no topo do painel inicial (ver _painel_topo.html) */
+.calendario-mini { width: auto; border-collapse: collapse; }
+.calendario-mini th, .calendario-mini td {
+  border: none; padding: 2px 4px; text-align: center;
+}
+.calendario-mini th {
+  font-size: .68rem; font-weight: 600; color: var(--texto-suave);
+  text-transform: none; letter-spacing: 0;
+}
+.calendario-mini-dia {
+  width: 28px; height: 28px; line-height: 28px; margin: 0 auto;
+  border-radius: 50%; font-size: .8rem; color: var(--texto);
+}
+.calendario-mini-dia.hoje { background: var(--azul); color: #fff; font-weight: 700; }
+.calendario-mini-dia.com-evento { background: var(--azul-claro); color: var(--azul); font-weight: 600; }
+
+/* Grade de cartões de atalho nos painéis iniciais (dashboard_*.html) */
+.grade-cartoes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.grade-cartoes > .card { margin-bottom: 0; }
+
 /* ---------- responsivo simples: menu lateral vira barra fixa no topo em telas estreitas ---------- */
 @media (max-width: 860px) {
   .shell { flex-direction: column; }
