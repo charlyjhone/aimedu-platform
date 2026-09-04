@@ -1,50 +1,54 @@
 {% extends "base.html" %}
 {% block titulo %}Bússola Pedagógica — AIM.Edu{% endblock %}
 {% block conteudo %}
-<div class="card">
-  <h2>Bússola Pedagógica</h2>
-  {% if segmento_label %}
-  <p><span class="tag">{{ segmento_label }}</span> — os números abaixo são só do seu segmento.</p>
-  {% endif %}
-  <p>{{ total_diag }} diagnóstico(s) adaptativo(s) realizados até agora {% if segmento_label %}no seu segmento{% else %}em toda a escola{% endif %}.</p>
-</div>
+{% include "_painel_topo.html" %}
 
-<div class="card">
-  <h2>Radar da Coordenação</h2>
-  {% if contagem.alto or contagem.medio or contagem.baixo %}
-    <p>
-      <span class="tag nivel-alto">{{ contagem.alto }} alerta(s) de nível alto</span>
-      &nbsp;<span class="tag nivel-medio">{{ contagem.medio }} médio</span>
-      &nbsp;<span class="tag nivel-baixo">{{ contagem.baixo }} baixo</span>
-      &nbsp;— pendentes de análise.
-    </p>
-  {% else %}
-    <p>Nenhum alerta pendente no momento.</p>
-  {% endif %}
-  <a class="botao" href="{{ url_for('radar_coordenacao.index') }}">Abrir Radar completo</a>
-</div>
+<div class="grade-cartoes">
+  <div class="card">
+    <h2>Bússola Pedagógica</h2>
+    {% if segmento_label %}
+    <p><span class="tag">{{ segmento_label }}</span> — os números abaixo são só do seu segmento.</p>
+    {% endif %}
+    <p>{{ total_diag }} diagnóstico(s) adaptativo(s) realizados até agora {% if segmento_label %}no seu segmento{% else %}em toda a escola{% endif %}.</p>
+  </div>
 
-<div class="card">
-  <h2>Turmas</h2>
-  <p>Veja as turmas da escola e a lista de alunos matriculados em cada uma, com acesso rápido à ficha de cada aluno.</p>
-  <a class="botao" href="{{ url_for('turmas.index') }}">Abrir Turmas</a>
-</div>
+  <div class="card">
+    <h2>Radar da Coordenação</h2>
+    {% if contagem.alto or contagem.medio or contagem.baixo %}
+      <p>
+        <span class="tag nivel-alto">{{ contagem.alto }} alerta(s) de nível alto</span>
+        &nbsp;<span class="tag nivel-medio">{{ contagem.medio }} médio</span>
+        &nbsp;<span class="tag nivel-baixo">{{ contagem.baixo }} baixo</span>
+        &nbsp;— pendentes de análise.
+      </p>
+    {% else %}
+      <p>Nenhum alerta pendente no momento.</p>
+    {% endif %}
+    <a class="botao" href="{{ url_for('radar_coordenacao.index') }}">Abrir Radar completo</a>
+  </div>
 
-<div class="card">
-  <h2>Inclusão</h2>
-  <p>Cadastro de necessidades específicas e adaptações por aluno, para orientar professores no dia a dia.</p>
-  <a class="botao" href="{{ url_for('inclusao.index') }}">Abrir cadastro de Inclusão</a>
-</div>
+  <div class="card">
+    <h2>Turmas</h2>
+    <p>Veja as turmas da escola e a lista de alunos matriculados em cada uma, com acesso rápido à ficha de cada aluno.</p>
+    <a class="botao" href="{{ url_for('turmas.index') }}">Abrir Turmas</a>
+  </div>
 
-<div class="card">
-  <h2>Gestão de Usuários</h2>
-  <p>Crie contas, ative/desative, redefina senhas e importe alunos ou professores em lote por CSV.</p>
-  <a class="botao" href="{{ url_for('gestao_usuarios.index') }}">Abrir Gestão de Usuários</a>
-</div>
+  <div class="card">
+    <h2>Inclusão</h2>
+    <p>Cadastro de necessidades específicas e adaptações por aluno, para orientar professores no dia a dia.</p>
+    <a class="botao" href="{{ url_for('inclusao.index') }}">Abrir cadastro de Inclusão</a>
+  </div>
 
-<div class="card">
-  <h2>Coordenador de Professores por IA</h2>
-  <p>Desempenho por turma, sugestões pedagógicas e relatório de adesão dos professores às ferramentas do sistema.</p>
-  <a class="botao" href="{{ url_for('coordenador_professores.index') }}">Abrir Coordenador de Professores</a>
+  <div class="card">
+    <h2>Gestão de Usuários</h2>
+    <p>Crie contas, ative/desative, redefina senhas e importe alunos ou professores em lote por CSV.</p>
+    <a class="botao" href="{{ url_for('gestao_usuarios.index') }}">Abrir Gestão de Usuários</a>
+  </div>
+
+  <div class="card">
+    <h2>Coordenador de Professores por IA</h2>
+    <p>Desempenho por turma, sugestões pedagógicas e relatório de adesão dos professores às ferramentas do sistema.</p>
+    <a class="botao" href="{{ url_for('coordenador_professores.index') }}">Abrir Coordenador de Professores</a>
+  </div>
 </div>
 {% endblock %}
