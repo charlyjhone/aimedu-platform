@@ -1,0 +1,54 @@
+{# Cabeçalho de boas-vindas + calendário do mês + próximos eventos, incluído
+   no topo de todo painel inicial (dashboard_*.html e familia_index.html).
+   'papel_label', 'hoje_extenso', 'eventos_proximos' e 'calendario_mes' vêm
+   do context_processor global em app/__init__.py (_injetar_layout) —
+   nenhuma rota precisa passá-los. #}
+<div class="card">
+  <h2>Olá, {{ session['usuario']['nome'].split(' ')[0] }}!</h2>
+  <p style="color:#666; font-size:0.85rem;">{{ papel_label }}{% if segmento_atual %} · {{ segmento_atual }}{% endif %} · {{ hoje_extenso }}</p>
+</div>
+
+<div class="card">
+  <div style="display:flex; gap:28px; flex-wrap:wrap;">
+    <div style="flex:0 0 auto;">
+      <div style="font-weight:600; font-size:0.85rem; color:var(--azul); margin-bottom:8px; text-align:center;">{{ calendario_mes.nome_mes }}</div>
+      <table class="calendario-mini">
+        <tr>
+          {% for letra in ['D','S','T','Q','Q','S','S'] %}
+          <th>{{ letra }}</th>
+          {% endfor %}
+        </tr>
+        {% for semana in calendario_mes.semanas %}
+        <tr>
+          {% for dia in semana %}
+          <td>
+            {% if dia != 0 %}
+            <div class="calendario-mini-dia{% if dia == calendario_mes.dia_hoje %} hoje{% elif dia in calendario_mes.dias_com_evento %} com-evento{% endif %}">{{ dia }}</div>
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+
+    <div style="flex:1; min-width:220px;">
+      <h2 style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-top:0;">
+        Próximos eventos
+        <a href="{{ url_for('calendario.index') }}" style="font-size:0.78rem; font-weight:400;">ver calendário completo</a>
+      </h2>
+      {% if eventos_proximos %}
+      <div style="display:flex; flex-direction:column; gap:10px; margin-top:6px;">
+        {% for e in eventos_proximos %}
+        <div style="display:flex; gap:12px; align-items:baseline;">
+          <div style="background:var(--azul-claro); color:var(--azul); border-radius:6px; padding:4px 10px; font-size:0.78rem; font-weight:700; white-space:nowrap;">{{ e['data_evento'] }}</div>
+          <div>{{ e['titulo'] }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p style="color:#666; font-size:0.85rem;">Nenhum evento próximo por enquanto.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
