@@ -8,7 +8,7 @@
   {% if item['eixo_bncc'] %}<span class="tag">{{ item['eixo_bncc'] }}</span>{% endif %}
   <div class="barra"><div style="width: {{ (numero-1) / total * 100 }}%;"></div></div>
 
-  <h2 style="font-weight:normal; color:#1c1c1c;">{{ item['enunciado'] }}</h2>
+  <h2>{{ item['enunciado'] }}</h2>
 
   <form method="post" action="{{ url_for('diagnostico.responder', disciplina=disciplina) }}">
     {% for alt in alternativas %}
