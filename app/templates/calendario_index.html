@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block titulo %}Calendário — AIM.Edu{% endblock %}
+{% block conteudo %}
+<div class="card">
+  <h2>Calendário</h2>
+  <p style="color:#666; font-size:0.85rem;">Próximos eventos e datas importantes da escola, filtrados pelo que é relevante pra você.</p>
+  {% if pode_gerenciar %}
+  <a class="botao" href="{{ url_for('calendario.novo') }}" style="margin-top:10px;">Novo evento</a>
+  {% endif %}
+</div>
+
+<div class="card">
+  {% if eventos %}
+  <table>
+    <tr><th>Data</th><th>Evento</th><th>Para quem</th>{% if pode_gerenciar %}<th></th>{% endif %}</tr>
+    {% for e in eventos %}
+    <tr>
+      <td style="white-space:nowrap;">{{ e['data_evento'] }}</td>
+      <td>
+        {{ e['titulo'] }}
+        {% if e['descricao'] %}<div style="color:var(--texto-suave); font-size:0.8rem; margin-top:2px;">{{ e['descricao'] }}</div>{% endif %}
+      </td>
+      <td>
+        <span class="tag">{{ publicos_label.get(e['publico'], e['publico']) }}</span>
+        {% if e['segmento'] %}<span class="tag">{{ segmentos_label.get(e['segmento'], e['segmento']) }}</span>{% endif %}
+      </td>
+      {% if pode_gerenciar %}
+      <td>
+        <form method="post" action="{{ url_for('calendario.excluir', evento_id=e['id']) }}" onsubmit="return confirm('Excluir o evento {{ e['titulo'] }}?');">
+          <button type="submit" class="botao" style="background:var(--vermelho); padding:6px 12px; font-size:0.8rem;">Excluir</button>
+        </form>
+      </td>
+      {% endif %}
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>Nenhum evento futuro cadastrado ainda.</p>
+  {% endif %}
+</div>
+{% endblock %}
