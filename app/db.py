@@ -1,5 +1,4 @@
-```python
-\"\"\"
+"""
 Camada de banco de dados do AIM.Edu.
 
 Se a variável de ambiente DATABASE_URL estiver definida, conecta no Postgres
@@ -8,10 +7,10 @@ camada não precisa recriá-lo. Sem essa variável, usa SQLite local (modo de
 demonstração, sem depender de internet).
 
 Todas as consultas em auth.py, app/modules/*.py e seed_data.py usam SQL
-parametrizado com \"?\" de propósito — a classe _PGConnection abaixo traduz
-isso para \"%s\" na hora de falar com o Postgres, então nenhum desses arquivos
+parametrizado com "?" de propósito — a classe _PGConnection abaixo traduz
+isso para "%s" na hora de falar com o Postgres, então nenhum desses arquivos
 precisa saber qual banco está por trás.
-\"\"\"
+"""
 import os
 import sqlite3
 import uuid
@@ -327,4 +326,3 @@ def init_db(app):
         conn = get_db()
         conn.executescript(SCHEMA_SQLITE)
         conn.commit()
-```
