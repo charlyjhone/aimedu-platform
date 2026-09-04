@@ -30,6 +30,9 @@
       <a class="nav-item {% if request.endpoint == 'auth.painel' %}ativo{% endif %}" href="{{ url_for('auth.painel') }}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">{{ icones_svg['home']|safe }}</svg> Painel
       </a>
+      <a class="nav-item {% if request.blueprint == 'calendario' %}ativo{% endif %}" href="{{ url_for('calendario.index') }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">{{ icones_svg['calendar']|safe }}</svg> Calendário
+      </a>
 
       {% for secao in menu_lateral %}
       <div class="nav-secao">{{ secao.nome }}</div>
