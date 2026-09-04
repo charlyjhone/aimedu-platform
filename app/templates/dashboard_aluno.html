@@ -1,22 +1,26 @@
 {% extends "base.html" %}
 {% block titulo %}Meu painel — AIM.Edu{% endblock %}
 {% block conteudo %}
-<div class="card">
-  <h2>Diagnóstico Adaptativo</h2>
-  <p>Um teste que se ajusta à sua dificuldade a cada resposta — quanto mais preciso, mais ele mostra exatamente onde focar. Disponível para mais de uma disciplina.</p>
-  <a class="botao" href="{{ url_for('diagnostico.index') }}">Abrir Diagnóstico Adaptativo</a>
-</div>
+{% include "_painel_topo.html" %}
 
-<div class="card">
-  <h2>Redação (correção ENEM)</h2>
-  <p>Envie uma redação e receba uma estimativa de nota nas 5 competências do ENEM, com feedback do que ajustar.</p>
-  <a class="botao" href="{{ url_for('redacao.index') }}">Abrir Redação</a>
-</div>
+<div class="grade-cartoes">
+  <div class="card">
+    <h2>Diagnóstico Adaptativo</h2>
+    <p>Um teste que se ajusta à sua dificuldade a cada resposta — quanto mais preciso, mais ele mostra exatamente onde focar. Disponível para mais de uma disciplina.</p>
+    <a class="botao" href="{{ url_for('diagnostico.index') }}">Abrir Diagnóstico Adaptativo</a>
+  </div>
 
-<div class="card">
-  <h2>Bússola Vocacional</h2>
-  <p>Um questionário rápido de interesses que, cruzado com seus diagnósticos, ajuda a enxergar caminhos possíveis.</p>
-  <a class="botao" href="{{ url_for('bussola_vocacional.index') }}">Abrir Bússola Vocacional</a>
+  <div class="card">
+    <h2>Redação (correção ENEM)</h2>
+    <p>Envie uma redação e receba uma estimativa de nota nas 5 competências do ENEM, com feedback do que ajustar.</p>
+    <a class="botao" href="{{ url_for('redacao.index') }}">Abrir Redação</a>
+  </div>
+
+  <div class="card">
+    <h2>Bússola Vocacional</h2>
+    <p>Um questionário rápido de interesses que, cruzado com seus diagnósticos, ajuda a enxergar caminhos possíveis.</p>
+    <a class="botao" href="{{ url_for('bussola_vocacional.index') }}">Abrir Bússola Vocacional</a>
+  </div>
 </div>
 
 {% if diagnosticos %}
