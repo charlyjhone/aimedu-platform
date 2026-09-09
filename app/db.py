@@ -138,7 +138,43 @@ create table if not exists redacoes (
     arquivo_content_type text,
     status text not null default 'aguardando_ia' check (status in ('aguardando_ia','corrigida')),
     nota_c1 integer, nota_c2 integer, nota_c3 integer, nota_c4 integer, nota_c5 integer,
+    -- Nota canônica exibida ao aluno (média ponderada das 5 competências,
+    -- decisão do usuário em 2026-09-09 — ver app/orchestrator/corretor.py).
+    -- Guardada aqui (em vez de só recalculada na hora de exibir) para não
+    -- mudar retroativamente a nota de redações já corrigidas se os pesos
+    -- mudarem no futuro.
+    nota_ponderada integer,
     feedback_ia text,
+    criado_em text not null default (datetime('now'))
+);
+
+-- Histórico de chamadas do "time invisível" de 12 agentes de IA (ver
+-- app/orchestrator/corretor.py e app/agents/agente.py) — uma linha por
+-- chamada de agente (mais uma linha 'orquestrador' com o resultado final
+-- consolidado). 'redacao_id' é opcional (nullable) porque
+-- corrigir_redacao(tema, texto) pode ser chamada sem um id de redação
+-- ainda vinculado (ex.: um teste manual). Guardado para uma evolução
+-- futura de ciclo de tentativas/reescrita — nenhum código lê esta tabela
+-- para decidir nada ainda, ela só registra.
+create table if not exists tentativas (
+    id text primary key,
+    redacao_id text references redacoes(id),
+    agente text not null,
+    numero_tentativa integer not null default 1,
+    modelo text,
+    entrada text,
+    saida text,
+    nota integer,
+    erro text,
+    duracao_ms integer,
+    -- Tokens reais consumidos nesta chamada (vêm do campo "usage" da API da
+    -- Anthropic, capturados em app/agents/agente.py:_chamar_claude). Ficam
+    -- NULL quando o agente falhou antes de completar a chamada (erro de
+    -- rede) ou numa linha "orquestrador" (que não chama a API diretamente).
+    -- Servem para validar, com dado real, a estimativa de custo por redação
+    -- discutida com o usuário em 2026-09-09.
+    tokens_entrada integer,
+    tokens_saida integer,
     criado_em text not null default (datetime('now'))
 );
 
