@@ -88,8 +88,44 @@ create table if not exists itens_banco (
     alternativas text not null,
     correta text not null,
     explicacao text,
+    -- Habilidade específica trabalhada por este item (ex.: "juros
+    -- compostos"), mais fina que 'disciplina' — usada pela Trilha
+    -- Adaptativa (app/modules/trilha_adaptativa.py). NULL em itens que só
+    -- servem o Diagnóstico Adaptativo (que não usa este campo); só itens
+    -- com habilidade preenchida entram na Trilha.
+    habilidade text,
+    -- Prioridade de atendimento dessa habilidade na Trilha (maior = mais
+    -- prioritário). Preenchida à mão pela coordenação/professor no
+    -- cadastro da questão (decisão do usuário em 2026-09-09: a IA nunca
+    -- inventa essa prioridade a partir de estatística de incidência no
+    -- ENEM — não temos dado real de frequência por edição, e o projeto tem
+    -- o princípio de nunca inventar dado, ver Agente 1 em
+    -- app/agents/agente.py). NULL/0 = sem prioridade definida, fica por
+    -- último na fila da Trilha.
+    prioridade integer,
     criado_em text not null default (datetime('now'))
 );
+
+-- Trilha Adaptativa: uma linha por aluno+disciplina+habilidade, guardando
+-- a sequência de acertos seguidos e se a habilidade já foi "dominada" (ver
+-- STREAK_DOMINIO em app/modules/trilha_adaptativa.py). Diferente do
+-- Diagnóstico Adaptativo (que gera um registro por tentativa em
+-- diagnosticos/diagnostico_respostas), esta tabela é sempre atualizada no
+-- lugar — a Trilha não tem "início e fim", ela roda continuamente.
+create table if not exists dominio_habilidades (
+    id text primary key,
+    aluno_id text not null references alunos(id),
+    disciplina text not null,
+    habilidade text not null,
+    streak_atual integer not null default 0,
+    respostas_total integer not null default 0,
+    acertos_total integer not null default 0,
+    status text not null default 'em_andamento' check (status in ('em_andamento','dominada')),
+    dominada_em text,
+    criado_em text not null default (datetime('now'))
+);
+create unique index if not exists idx_dominio_aluno_habilidade
+    on dominio_habilidades(aluno_id, disciplina, habilidade);
 
 create table if not exists diagnosticos (
     id text primary key,
