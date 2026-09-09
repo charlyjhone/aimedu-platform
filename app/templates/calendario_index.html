@@ -15,7 +15,7 @@
     <tr><th>Data</th><th>Evento</th><th>Para quem</th>{% if pode_gerenciar %}<th></th>{% endif %}</tr>
     {% for e in eventos %}
     <tr>
-      <td style="white-space:nowrap;">{{ e['data_evento'] }}</td>
+      <td style="white-space:nowrap;">{{ e['data_evento'] }}{% if e['hora_evento'] %} · {{ e['hora_evento'] }}{% endif %}</td>
       <td>
         {{ e['titulo'] }}
         {% if e['descricao'] %}<div style="color:var(--texto-suave); font-size:0.8rem; margin-top:2px;">{{ e['descricao'] }}</div>{% endif %}
