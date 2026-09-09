@@ -1,17 +1,33 @@
 {# Cabeçalho de boas-vindas + calendário do mês + próximos eventos, incluído
    no topo de todo painel inicial (dashboard_*.html e familia_index.html).
-   'papel_label', 'hoje_extenso', 'eventos_proximos' e 'calendario_mes' vêm
-   do context_processor global em app/__init__.py (_injetar_layout) —
-   nenhuma rota precisa passá-los. #}
+   'papel_label', 'saudacao', 'hoje_extenso', 'amanha_iso',
+   'pode_gerenciar_eventos', 'eventos_proximos' e 'calendario_mes' vêm do
+   context_processor global em app/__init__.py (_injetar_layout) — nenhuma
+   rota precisa passá-los.
+
+   Navegação de mês (pedida pelo usuário em 2026-09-09 — "o calendário está
+   estático"): os links de mês anterior/seguinte recarregam esta MESMA
+   página só trocando 'cal_ano'/'cal_mes' na URL (ver _url_mes em
+   app/__init__.py) — funciona em qualquer rota que inclua este parcial,
+   sem precisar de JS. #}
 <div class="card">
-  <h2>Olá, {{ session['usuario']['nome'].split(' ')[0] }}!</h2>
+  <h2>{{ saudacao }}, {{ session['usuario']['nome'].split(' ')[0] }}!</h2>
   <p style="color:#666; font-size:0.85rem;">{{ papel_label }}{% if segmento_atual %} · {{ segmento_atual }}{% endif %} · {{ hoje_extenso }}</p>
 </div>
 
 <div class="card">
   <div style="display:flex; gap:28px; flex-wrap:wrap;">
     <div style="flex:0 0 auto;">
-      <div style="font-weight:600; font-size:0.85rem; color:var(--azul); margin-bottom:8px; text-align:center;">{{ calendario_mes.nome_mes }}</div>
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:8px;">
+        <a href="{{ calendario_mes.url_mes_anterior }}" title="Mês anterior" style="font-weight:700; text-decoration:none; padding:0 4px;">&lsaquo;</a>
+        <div style="font-weight:600; font-size:0.85rem; color:var(--azul); text-align:center;">
+          {{ calendario_mes.nome_mes }}
+          {% if not calendario_mes.eh_mes_atual %}
+          <a href="{{ calendario_mes.url_mes_atual }}" style="display:block; font-weight:400; font-size:0.68rem;">voltar pro mês atual</a>
+          {% endif %}
+        </div>
+        <a href="{{ calendario_mes.url_mes_seguinte }}" title="Próximo mês" style="font-weight:700; text-decoration:none; padding:0 4px;">&rsaquo;</a>
+      </div>
       <table class="calendario-mini">
         <tr>
           {% for letra in ['D','S','T','Q','Q','S','S'] %}
@@ -23,13 +39,28 @@
           {% for dia in semana %}
           <td>
             {% if dia != 0 %}
-            <div class="calendario-mini-dia{% if dia == calendario_mes.dia_hoje %} hoje{% elif dia in calendario_mes.dias_com_evento %} com-evento{% endif %}">{{ dia }}</div>
+              {% set classes = "calendario-mini-dia" + (" hoje" if dia == calendario_mes.dia_hoje else " com-evento" if dia in calendario_mes.dias_com_evento else "") %}
+              {% if pode_gerenciar_eventos %}
+              {# Só quem cria evento (coordenação/direção) ganha o dia
+                 clicável — pra quem só lê, um dia "clicável" que não leva a
+                 lugar nenhum seria confuso. #}
+              <a class="{{ classes }}" style="display:block; text-decoration:none;"
+                 href="{{ url_for('calendario.novo', data='%04d-%02d-%02d'|format(calendario_mes.ano, calendario_mes.mes, dia)) }}"
+                 title="Criar evento em {{ '%02d/%02d'|format(dia, calendario_mes.mes) }}">{{ dia }}</a>
+              {% else %}
+              <div class="{{ classes }}">{{ dia }}</div>
+              {% endif %}
             {% endif %}
           </td>
           {% endfor %}
         </tr>
         {% endfor %}
       </table>
+      {% if pode_gerenciar_eventos %}
+      <p style="margin-top:8px; text-align:center;">
+        <a href="{{ url_for('calendario.novo', data=amanha_iso) }}" style="font-size:0.78rem;">+ evento amanhã</a>
+      </p>
+      {% endif %}
     </div>
 
     <div style="flex:1; min-width:220px;">
@@ -41,7 +72,7 @@
       <div style="display:flex; flex-direction:column; gap:10px; margin-top:6px;">
         {% for e in eventos_proximos %}
         <div style="display:flex; gap:12px; align-items:baseline;">
-          <div style="background:var(--azul-claro); color:var(--azul); border-radius:6px; padding:4px 10px; font-size:0.78rem; font-weight:700; white-space:nowrap;">{{ e['data_evento'] }}</div>
+          <div style="background:var(--azul-claro); color:var(--azul); border-radius:6px; padding:4px 10px; font-size:0.78rem; font-weight:700; white-space:nowrap;">{{ e['data_evento'] }}{% if e['hora_evento'] %} {{ e['hora_evento'] }}{% endif %}</div>
           <div>{{ e['titulo'] }}</div>
         </div>
         {% endfor %}
