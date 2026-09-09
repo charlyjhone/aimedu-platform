@@ -78,7 +78,36 @@ create table itens_banco (
     alternativas  jsonb not null,         -- [{"letra":"A","texto":"..."}, ...]
     correta       text not null,
     explicacao    text,
+    -- Habilidade específica (ex.: "juros compostos"), mais fina que
+    -- 'disciplina' — usada pela Trilha Adaptativa (ver
+    -- app/modules/trilha_adaptativa.py). NULL = item não participa da
+    -- Trilha, só do Diagnóstico Adaptativo.
+    habilidade    text,
+    -- Prioridade de atendimento na Trilha, definida à mão pela
+    -- coordenação/professor no cadastro da questão — nunca inventada pela
+    -- IA a partir de estatística de ENEM (decisão do usuário em
+    -- 2026-09-09, mesmo princípio de "nunca inventar dado" do Agente 1).
+    prioridade    integer,
     criado_em     timestamptz not null default now()
+);
+
+-- Trilha Adaptativa: uma linha por aluno+disciplina+habilidade — sequência
+-- de acertos seguidos e status de domínio (ver STREAK_DOMINIO em
+-- app/modules/trilha_adaptativa.py). Ao contrário do Diagnóstico
+-- Adaptativo, não é "uma tentativa por vez": esta tabela é sempre
+-- atualizada no lugar, porque a Trilha roda continuamente.
+create table dominio_habilidades (
+    id            uuid primary key default gen_random_uuid(),
+    aluno_id      uuid not null references alunos(id) on delete cascade,
+    disciplina    text not null,
+    habilidade    text not null,
+    streak_atual  int not null default 0,
+    respostas_total int not null default 0,
+    acertos_total int not null default 0,
+    status        text not null default 'em_andamento' check (status in ('em_andamento','dominada')),
+    dominada_em   timestamptz,
+    criado_em     timestamptz not null default now(),
+    unique (aluno_id, disciplina, habilidade)
 );
 
 -- ---------- diagnóstico adaptativo (matemática ENEM é o primeiro módulo) ----------
@@ -227,6 +256,11 @@ create table eventos_escolares (
     titulo        text not null,
     descricao     text,
     data_evento   date not null,
+    -- Horário opcional do evento (ex.: "14:30"), formato do <input
+    -- type="time"> — pedido do usuário em 2026-09-09 pra reuniões com hora
+    -- marcada. Texto simples só pra exibição/ordenação, sem cálculo em
+    -- cima (mesma filosofia de dependências mínimas do resto do projeto).
+    hora_evento   text,
     publico       text not null default 'todos' check (publico in ('todos','alunos','professores','coordenacao','familias')),
     segmento      text,
     criado_por_usuario_id uuid not null references usuarios(id),
@@ -241,3 +275,4 @@ create index idx_obs_infantil_aluno on observacoes_infantil(aluno_id);
 create index idx_obs_infantil_turma on observacoes_infantil(turma_id);
 create index idx_eventos_escola_data on eventos_escolares(escola_id, data_evento);
 create index idx_tentativas_redacao on tentativas(redacao_id);
+create index idx_dominio_aluno on dominio_habilidades(aluno_id);
