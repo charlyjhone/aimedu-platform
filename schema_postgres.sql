@@ -130,8 +130,43 @@ create table redacoes (
     arquivo_content_type text,
     status        text not null default 'aguardando_ia' check (status in ('aguardando_ia','corrigida')),
     nota_c1 int, nota_c2 int, nota_c3 int, nota_c4 int, nota_c5 int,
+    -- Nota canônica exibida ao aluno (média ponderada das 5 competências,
+    -- decisão do usuário em 2026-09-09 — ver app/orchestrator/corretor.py).
+    -- Guardada aqui (em vez de só recalculada na hora de exibir) para não
+    -- mudar retroativamente a nota de redações já corrigidas se os pesos
+    -- mudarem no futuro.
+    nota_ponderada int,
     feedback_ia   text,
     criado_em     timestamptz not null default now()
+);
+
+-- Histórico de chamadas do "time invisível" de 12 agentes de IA (ver
+-- app/orchestrator/corretor.py e app/agents/agente.py) — uma linha por
+-- chamada de agente, mais uma linha 'orquestrador' com o resultado final
+-- consolidado. redacao_id fica nullable de propósito: corrigir_redacao
+-- pode ser chamada sem id de redação vinculado (ex.: teste manual). Serve
+-- de base para uma evolução futura de ciclo de tentativas/reescrita —
+-- nenhum código lê esta tabela para decidir nada ainda, ela só registra.
+create table tentativas (
+    id              uuid primary key default gen_random_uuid(),
+    redacao_id      uuid references redacoes(id) on delete cascade,
+    agente          text not null,
+    numero_tentativa int not null default 1,
+    modelo          text,
+    entrada         text,
+    saida           text,
+    nota            int,
+    erro            text,
+    duracao_ms      int,
+    -- Tokens reais consumidos nesta chamada (campo "usage" da API da
+    -- Anthropic, capturado em app/agents/agente.py:_chamar_claude). NULL
+    -- quando o agente falhou antes de completar a chamada, ou na linha
+    -- "orquestrador" (que não chama a API diretamente). Base para validar,
+    -- com dado real, a estimativa de custo por redação (ver conversa de
+    -- 2026-09-09).
+    tokens_entrada  int,
+    tokens_saida    int,
+    criado_em       timestamptz not null default now()
 );
 
 create table alertas_radar (
@@ -205,3 +240,4 @@ create index idx_radar_turma on alertas_radar(turma_id);
 create index idx_obs_infantil_aluno on observacoes_infantil(aluno_id);
 create index idx_obs_infantil_turma on observacoes_infantil(turma_id);
 create index idx_eventos_escola_data on eventos_escolares(escola_id, data_evento);
+create index idx_tentativas_redacao on tentativas(redacao_id);
