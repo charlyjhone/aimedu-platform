@@ -1,3 +1,8 @@
 Flask==3.1.3
 gunicorn==23.0.0
 psycopg2-binary==2.9.10
+# Garante o banco de fusos horários (zoneinfo) mesmo se a imagem do Render
+# não tiver o tzdata do sistema operacional instalado — usado pela saudação
+# ("bom dia"/"boa tarde"/"boa noite") e pela virada do dia em horário do
+# Brasil, ver app/__init__.py:_FUSO_BRASIL.
+tzdata==2025.2
