@@ -1,27 +1,51 @@
 import os
 import calendar as calendar_stdlib
-from datetime import datetime, timezone
-from flask import Flask, session
+from datetime import datetime, timedelta
+from urllib.parse import urlencode
+from zoneinfo import ZoneInfo
+from flask import Flask, session, request
 
 from .db import init_db, get_db
 from . import auth
 from .auth import escopo_etapa, PAPEIS_DIRECAO
 from .modules import diagnostico, radar_coordenacao, bussola_vocacional, redacao, relatorios_familia, inclusao, gestao_usuarios, coordenador_professores, turmas, observacoes_infantil, calendario
 from .modules.gestao_usuarios import PAPEIS_LABEL, SEGMENTOS_LABEL
-from .modules.calendario import _publicos_visiveis, _segmento_do_usuario, _eventos_visiveis, _dias_do_mes_com_evento
+from .modules.calendario import _publicos_visiveis, _segmento_do_usuario, _eventos_visiveis, _dias_do_mes_com_evento, PAPEIS_GERENCIA
 from .ai_engine import NOMES_DISCIPLINA
 
 _DIAS_SEMANA = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"]
 _MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho",
           "agosto", "setembro", "outubro", "novembro", "dezembro"]
 
+# Ambas as escolas do usuário ficam em horário UTC-3 sem horário de verão
+# (Brasil não usa mais DST desde 2019) — usar isso em vez de UTC puro
+# importa pra dois cálculos: a saudação ("bom dia"/"boa tarde"/"boa noite")
+# e a virada do dia à meia-noite local, que em UTC aconteceria 3h "adiantada"
+# (ex.: 21h de Macapá já seria "amanhã" se calculado em UTC puro).
+_FUSO_BRASIL = ZoneInfo("America/Sao_Paulo")
 
-def _data_extensa():
-    """Data de hoje por extenso em português, sem depender de locale do
-    sistema operacional (que pode não ter pt_BR instalado) — usada no
-    cabeçalho de boas-vindas de todo painel inicial (ver _painel_topo.html)."""
-    hoje = datetime.now(timezone.utc)
-    return f"{_DIAS_SEMANA[hoje.weekday()]}, {hoje.day} de {_MESES[hoje.month - 1]} de {hoje.year}"
+
+def _agora_brasil() -> datetime:
+    return datetime.now(_FUSO_BRASIL)
+
+
+def _saudacao(agora: datetime) -> str:
+    """Saudação de acordo com a hora local — parte do cabeçalho de
+    boas-vindas mais 'legal' pedido pelo usuário em 2026-09-09 (antes era
+    sempre 'Olá', não importava a hora)."""
+    hora = agora.hour
+    if 5 <= hora < 12:
+        return "Bom dia"
+    if 12 <= hora < 18:
+        return "Boa tarde"
+    return "Boa noite"
+
+
+def _data_extensa(agora: datetime) -> str:
+    """Data por extenso em português, sem depender de locale do sistema
+    operacional (que pode não ter pt_BR instalado) — usada no cabeçalho de
+    boas-vindas de todo painel inicial (ver _painel_topo.html)."""
+    return f"{_DIAS_SEMANA[agora.weekday()]}, {agora.day} de {_MESES[agora.month - 1]} de {agora.year}"
 
 
 def _fmt_data(valor):
@@ -212,19 +236,56 @@ def create_app():
         # que auth.painel() nem cada módulo precisem saber desse cálculo.
         publicos = _publicos_visiveis(u["papel"])
         eventos_proximos = _eventos_visiveis(db, u["escola_id"], publicos, segmento_eventos, limite=5)
-        # Mini calendário visual do mês atual (topo de todo painel inicial —
-        # ver _painel_topo.html). 'firstweekday=6' começa a semana no domingo,
-        # como é costume no Brasil; dias de fora do mês vêm como 0 e o
-        # template simplesmente não desenha nada nessas células.
-        hoje_date = datetime.now(timezone.utc).date()
+
+        # Mini calendário visual (topo de todo painel inicial — ver
+        # _painel_topo.html). Antes sempre mostrava só o mês corrente, sem
+        # jeito de navegar (pedido do usuário em 2026-09-09: "o calendário
+        # está estático, dava pra ver o próximo mês"). Agora lê o mês/ano de
+        # 'cal_ano'/'cal_mes' na própria URL da página — como o widget
+        # aparece em várias rotas diferentes (painel, familia_index etc.),
+        # os links de anterior/próximo simplesmente recarregam a MESMA
+        # página trocando só esses dois parâmetros, preservando os demais
+        # que já estiverem lá.
+        agora = _agora_brasil()
+        try:
+            cal_ano = int(request.args.get("cal_ano", agora.year))
+            cal_mes = int(request.args.get("cal_mes", agora.month))
+            if not (1 <= cal_mes <= 12):
+                raise ValueError
+            # Limite generoso só pra não deixar alguém montar um ano
+            # absurdo na URL à mão e estourar o calendar_stdlib.
+            if not (1900 <= cal_ano <= 2200):
+                raise ValueError
+        except (TypeError, ValueError):
+            cal_ano, cal_mes = agora.year, agora.month
+
+        def _url_mes(ano, mes):
+            params = request.args.to_dict()
+            params["cal_ano"] = ano
+            params["cal_mes"] = mes
+            return f"{request.path}?{urlencode(params)}"
+
+        mes_anterior = (cal_ano - 1, 12) if cal_mes == 1 else (cal_ano, cal_mes - 1)
+        mes_seguinte = (cal_ano + 1, 1) if cal_mes == 12 else (cal_ano, cal_mes + 1)
+
         dias_com_evento = _dias_do_mes_com_evento(
-            db, u["escola_id"], publicos, segmento_eventos, hoje_date.year, hoje_date.month
+            db, u["escola_id"], publicos, segmento_eventos, cal_ano, cal_mes
         )
+        eh_mes_atual = (cal_ano, cal_mes) == (agora.year, agora.month)
         calendario_mes = {
-            "nome_mes": f"{_MESES[hoje_date.month - 1].capitalize()} de {hoje_date.year}",
-            "semanas": calendar_stdlib.Calendar(firstweekday=6).monthdayscalendar(hoje_date.year, hoje_date.month),
-            "dia_hoje": hoje_date.day,
+            "ano": cal_ano,
+            "mes": cal_mes,
+            "nome_mes": f"{_MESES[cal_mes - 1].capitalize()} de {cal_ano}",
+            "semanas": calendar_stdlib.Calendar(firstweekday=6).monthdayscalendar(cal_ano, cal_mes),
+            # Só destaca "hoje" quando o mês exibido é o mês corrente de
+            # verdade — navegando pra outro mês não faz sentido nenhum dia
+            # aparecer marcado como "hoje".
+            "dia_hoje": agora.day if eh_mes_atual else None,
             "dias_com_evento": dias_com_evento,
+            "eh_mes_atual": eh_mes_atual,
+            "url_mes_anterior": _url_mes(*mes_anterior),
+            "url_mes_seguinte": _url_mes(*mes_seguinte),
+            "url_mes_atual": _url_mes(agora.year, agora.month),
         }
         return {
             "menu_lateral": menu,
@@ -232,7 +293,11 @@ def create_app():
             "escola_atual": escola["nome"] if escola else None,
             "segmento_atual": SEGMENTOS_LABEL.get(segmento) if segmento else None,
             "icones_svg": ICONES_SVG,
-            "hoje_extenso": _data_extensa(),
+            "saudacao": _saudacao(agora),
+            "hoje_extenso": _data_extensa(agora),
+            "hoje_iso": agora.date().isoformat(),
+            "amanha_iso": (agora.date() + timedelta(days=1)).isoformat(),
+            "pode_gerenciar_eventos": u["papel"] in PAPEIS_GERENCIA,
             "eventos_proximos": eventos_proximos,
             "calendario_mes": calendario_mes,
         }
