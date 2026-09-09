@@ -20,6 +20,8 @@ formulário nem mostra essa opção pra ela. Direção, direção pedagógica e
 uma coordenação sem segmento definido podem escolher qualquer segmento ou
 deixar em branco (todos).
 """
+import re
+
 from flask import Blueprint, render_template, redirect, url_for, request, flash
 
 from ..db import get_db, new_id
@@ -82,7 +84,11 @@ def _eventos_visiveis(db, escola_id, publicos, segmento=None, incluir_passados=F
         from datetime import datetime, timezone
         condicoes.append("data_evento >= ?")
         params.append(datetime.now(timezone.utc).date().isoformat())
-    sql = f"select * from eventos_escolares where {' and '.join(condicoes)} order by data_evento"
+    # 'hora_evento' pode ser NULL (evento sem horário marcado) — nesses
+    # bancos (SQLite e Postgres) NULL ordena antes de qualquer valor, então
+    # um evento sem horário aparece primeiro entre os do mesmo dia. Não é
+    # uma regra de negócio importante, só uma ordenação razoável.
+    sql = f"select * from eventos_escolares where {' and '.join(condicoes)} order by data_evento, hora_evento"
     if limite:
         sql += " limit ?"
         params.append(limite)
@@ -135,6 +141,10 @@ def index():
     )
 
 
+_RE_DATA_ISO = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_RE_HORA = re.compile(r"^\d{2}:\d{2}$")
+
+
 @bp.route("/novo", methods=["GET", "POST"])
 @login_obrigatorio(papeis=list(PAPEIS_GERENCIA))
 def novo():
@@ -147,6 +157,9 @@ def novo():
     if request.method == "POST":
         titulo = request.form.get("titulo", "").strip()
         data_evento = request.form.get("data_evento", "").strip()
+        hora_evento = request.form.get("hora_evento", "").strip() or None
+        if hora_evento and not _RE_HORA.match(hora_evento):
+            hora_evento = None  # campo type="time" nunca deveria mandar outro formato — só uma proteção
         descricao = request.form.get("descricao", "").strip() or None
         publico = request.form.get("publico", "todos")
         if publico not in PUBLICOS_LABEL:
@@ -158,19 +171,30 @@ def novo():
         else:
             db.execute(
                 "insert into eventos_escolares "
-                "(id, escola_id, titulo, descricao, data_evento, publico, segmento, criado_por_usuario_id) "
-                "values (?,?,?,?,?,?,?,?)",
-                (new_id(), u["escola_id"], titulo, descricao, data_evento, publico, segmento, u["id"]),
+                "(id, escola_id, titulo, descricao, data_evento, hora_evento, publico, segmento, criado_por_usuario_id) "
+                "values (?,?,?,?,?,?,?,?,?)",
+                (new_id(), u["escola_id"], titulo, descricao, data_evento, hora_evento, publico, segmento, u["id"]),
             )
             db.commit()
             flash("Evento cadastrado.", "ok")
             return redirect(url_for("calendario.index"))
+
+    # 'data' na querystring pré-preenche o campo de data — usado pelo mini
+    # calendário do painel (ver app/__init__.py:_injetar_layout e
+    # _painel_topo.html), que agora deixa clicar direto num dia (ex.: o de
+    # amanhã) pra já abrir este formulário com a data certa. Validação
+    # simples de formato só pra não repassar lixo pro <input type="date">
+    # se alguém editar a URL à mão.
+    data_pre_preenchida = request.args.get("data", "").strip()
+    if not _RE_DATA_ISO.match(data_pre_preenchida):
+        data_pre_preenchida = ""
 
     return render_template(
         "calendario_form.html",
         publicos_label=PUBLICOS_LABEL,
         segmentos_label=SEGMENTOS_LABEL,
         mostrar_segmento=segmento_fixo is None,
+        data_pre_preenchida=data_pre_preenchida,
     )
 
 
