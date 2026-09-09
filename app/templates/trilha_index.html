@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block titulo %}Trilha Adaptativa — AIM.Edu{% endblock %}
+{% block conteudo %}
+<div class="card">
+  <h2>Trilha Adaptativa</h2>
+  <p>Uma trilha que roda continuamente: a cada questão, ela escolhe automaticamente a habilidade mais prioritária que você ainda não domina — e só avança para a próxima quando você acerta várias seguidas.</p>
+</div>
+
+<div class="card">
+  {% if disciplinas %}
+  <table>
+    <tr><th>Disciplina</th><th>Habilidades dominadas</th><th></th></tr>
+    {% for d in disciplinas %}
+    <tr>
+      <td>{{ d|disciplina }}</td>
+      <td>{{ progresso[d].dominadas }}/{{ progresso[d].total }}</td>
+      <td><a class="botao" href="{{ url_for('trilha_adaptativa.painel', disciplina=d) }}">Ver trilha</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>Ainda não há nenhuma habilidade cadastrada no banco de questões.</p>
+  {% endif %}
+</div>
+
+<p><a href="{{ url_for('auth.painel') }}">&larr; Voltar ao painel</a></p>
+{% endblock %}
