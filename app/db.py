@@ -284,6 +284,12 @@ create table if not exists eventos_escolares (
     titulo text not null,
     descricao text,
     data_evento text not null,
+    -- Horário opcional do evento (ex.: "14:30"), formato do <input
+    -- type="time"> — pedido do usuário em 2026-09-09 pra reuniões que têm
+    -- hora marcada. Guardado como texto simples (mesma filosofia de
+    -- dependências mínimas do resto do projeto) só pra exibição; não entra
+    -- em nenhum cálculo, só na ordenação dentro do mesmo dia.
+    hora_evento text,
     publico text not null default 'todos' check (publico in ('todos','alunos','professores','coordenacao','familias')),
     segmento text,
     criado_por_usuario_id text not null references usuarios(id),
