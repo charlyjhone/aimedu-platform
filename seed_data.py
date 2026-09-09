@@ -33,21 +33,30 @@ EIXOS_MATEMATICA = ["Números", "Álgebra e Funções", "Geometria", "Grandezas 
 # (eixo, dificuldade) -> item. Uma questão por combinação = 25 itens no total.
 ITENS_MATEMATICA = [
     # ---- Números ----
+    # 'habilidade'/'prioridade' preenchidos só nestes itens como ponto de
+    # partida pra testar a Trilha Adaptativa (app/modules/trilha_adaptativa.py)
+    # de ponta a ponta — o cadastro completo do banco (demais itens abaixo,
+    # e os de Português) fica pra coordenação/professor preencher aos poucos
+    # pela mesma lógica, item a item, à medida que o banco crescer.
     dict(eixo="Números", dif=1, enunciado="Uma loja deu 10% de desconto em um produto de R$ 200. Qual o valor do desconto?",
          alts=[("A","R$ 10"),("B","R$ 20"),("C","R$ 30"),("D","R$ 2")], correta="B",
-         exp="10% de 200 = 0,10 × 200 = R$ 20."),
+         exp="10% de 200 = 0,10 × 200 = R$ 20.",
+         habilidade="Porcentagem em contextos financeiros", prioridade=90),
     dict(eixo="Números", dif=2, enunciado="Um produto custava R$ 80 e teve aumento de 15%. Qual o novo preço?",
          alts=[("A","R$ 92"),("B","R$ 95"),("C","R$ 88"),("D","R$ 100")], correta="A",
-         exp="80 × 1,15 = R$ 92."),
+         exp="80 × 1,15 = R$ 92.",
+         habilidade="Porcentagem em contextos financeiros", prioridade=90),
     dict(eixo="Números", dif=3, enunciado="Um investimento de R$ 1.000 rende 2% ao mês, em juros compostos. Qual o valor aproximado após 2 meses?",
          alts=[("A","R$ 1.020"),("B","R$ 1.040"),("C","R$ 1.040,40"),("D","R$ 1.400")], correta="C",
-         exp="1000 × 1,02² = 1000 × 1,0404 = R$ 1.040,40."),
+         exp="1000 × 1,02² = 1000 × 1,0404 = R$ 1.040,40.",
+         habilidade="Juros compostos", prioridade=95),
     dict(eixo="Números", dif=4, enunciado="Se 3/5 de uma turma de 40 alunos foram aprovados diretamente, quantos alunos ficaram para recuperação?",
          alts=[("A","16"),("B","24"),("C","8"),("D","12")], correta="A",
          exp="3/5 de 40 = 24 aprovados; 40 − 24 = 16 para recuperação."),
     dict(eixo="Números", dif=5, enunciado="Uma dívida de R$ 5.000 é paga com juros compostos de 3% ao mês durante 3 meses, sem amortização. Qual o valor aproximado da dívida ao final?",
          alts=[("A","R$ 5.450"),("B","R$ 5.463,64"),("C","R$ 5.150"),("D","R$ 5.900")], correta="B",
-         exp="5000 × 1,03³ ≈ 5000 × 1,092727 ≈ R$ 5.463,64."),
+         exp="5000 × 1,03³ ≈ 5000 × 1,092727 ≈ R$ 5.463,64.",
+         habilidade="Juros compostos", prioridade=95),
 
     # ---- Álgebra e Funções ----
     dict(eixo="Álgebra e Funções", dif=1, enunciado="Se x + 5 = 12, qual o valor de x?",
@@ -491,10 +500,11 @@ def run():
             for item in ITENS_MATEMATICA:
                 alternativas = [{"letra": l, "texto": t} for l, t in item["alts"]]
                 db.execute(
-                    "insert into itens_banco (id, disciplina, eixo_bncc, dificuldade, enunciado, alternativas, correta, explicacao) "
-                    "values (?,?,?,?,?,?,?,?)",
+                    "insert into itens_banco (id, disciplina, eixo_bncc, dificuldade, enunciado, alternativas, correta, explicacao, habilidade, prioridade) "
+                    "values (?,?,?,?,?,?,?,?,?,?)",
                     (new_id(), "matematica", item["eixo"], item["dif"], item["enunciado"],
-                     json.dumps(alternativas, ensure_ascii=False), item["correta"], item["exp"]),
+                     json.dumps(alternativas, ensure_ascii=False), item["correta"], item["exp"],
+                     item.get("habilidade"), item.get("prioridade")),
                 )
             print(f"{len(ITENS_MATEMATICA)} questões de Matemática cadastradas no banco de itens.")
         else:
@@ -504,10 +514,11 @@ def run():
             for item in ITENS_PORTUGUES:
                 alternativas = [{"letra": l, "texto": t} for l, t in item["alts"]]
                 db.execute(
-                    "insert into itens_banco (id, disciplina, eixo_bncc, dificuldade, enunciado, alternativas, correta, explicacao) "
-                    "values (?,?,?,?,?,?,?,?)",
+                    "insert into itens_banco (id, disciplina, eixo_bncc, dificuldade, enunciado, alternativas, correta, explicacao, habilidade, prioridade) "
+                    "values (?,?,?,?,?,?,?,?,?,?)",
                     (new_id(), "portugues", item["eixo"], item["dif"], item["enunciado"],
-                     json.dumps(alternativas, ensure_ascii=False), item["correta"], item["exp"]),
+                     json.dumps(alternativas, ensure_ascii=False), item["correta"], item["exp"],
+                     item.get("habilidade"), item.get("prioridade")),
                 )
             print(f"{len(ITENS_PORTUGUES)} questões de Português cadastradas no banco de itens.")
         else:
