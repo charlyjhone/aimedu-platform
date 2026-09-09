@@ -181,6 +181,11 @@ def create_app():
         db = get_db()
         escola = db.execute("select nome from escolas where id = ?", (u["escola_id"],)).fetchone()
         segmento = escopo_etapa(u)
+        # Segmento do próprio usuário (só resolve pra aluno e coordenador —
+        # ver docstring de _segmento_do_usuario em app/modules/calendario.py)
+        # calculado uma vez só aqui e reaproveitado tanto pros filtros de
+        # menu abaixo quanto pro calendário mais adiante.
+        segmento_eventos = _segmento_do_usuario(db, u)
         menu = MENU_POR_PAPEL.get(u["papel"], [])
         # Uma coordenação escopada a um segmento que não é infantil não deve
         # nem ver o item "Educação Infantil" no menu — a rota já bloqueia o
@@ -192,12 +197,20 @@ def create_app():
                 {**secao, "itens": [i for i in secao["itens"] if i["endpoint"] != "observacoes_infantil.index"]}
                 for secao in menu
             ]
+        # Redação (correção por IA) é só para o Ensino Médio (decisão do
+        # usuário em 2026-09-09) — some do menu de quem não é do médio, e a
+        # própria rota em app/modules/redacao.py bloqueia o acesso direto
+        # por URL, mesmo padrão do item acima.
+        if u["papel"] == "aluno" and segmento_eventos != "medio":
+            menu = [
+                {**secao, "itens": [i for i in secao["itens"] if i["endpoint"] != "redacao.index"]}
+                for secao in menu
+            ]
         # Próximos eventos do calendário (ver app/modules/calendario.py) —
         # calculado aqui, uma vez só, pra alimentar o widget "Próximos
         # eventos" no topo de todo painel inicial (_painel_topo.html) sem
         # que auth.painel() nem cada módulo precisem saber desse cálculo.
         publicos = _publicos_visiveis(u["papel"])
-        segmento_eventos = _segmento_do_usuario(db, u)
         eventos_proximos = _eventos_visiveis(db, u["escola_id"], publicos, segmento_eventos, limite=5)
         # Mini calendário visual do mês atual (topo de todo painel inicial —
         # ver _painel_topo.html). 'firstweekday=6' começa a semana no domingo,
