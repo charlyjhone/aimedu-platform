@@ -9,26 +9,34 @@ redacoes_envio_por_foto): 'arquivo_caminho'/'arquivo_content_type' (onde a
 foto está — bucket privado 'redacoes' no Supabase Storage, ver
 app/storage.py) e 'status'.
 
-Correção pendente até um provedor de IA real: hoje NENHUMA correção
-automática roda mais no envio — a IA que "segue fielmente" os critérios do
-ENEM e faz a mentoria do aluno depende de um provedor com visão (o usuário
-decidiu que será o Gemini, no futuro — ver PROVEDOR_ATIVO em
-app/ai_engine.py) para ler a letra manuscrita direto da foto. Até essa
-chave existir, toda redação nasce com status='aguardando_ia' e
-nota_c1..c5/feedback_ia ficam NULL — a tela de resultado mostra um aviso
-nesse lugar, mesmo padrão do M7.2 (documentação pedagógica do Infantil).
-Quando o Gemini for conectado, o preenchimento desses campos (e o alerta de
-nota baixa pro Radar da Coordenação, hoje removido daqui por não haver mais
-nota calculada no envio) volta a acontecer nesse momento — em lote ou por
-webhook, sem precisar mudar as telas do aluno.
+Correção por IA (versão 2, ligada em 2026-09-09): ao enviar a foto, esta
+rota tenta, na hora, (1) transcrever a redação com o Agente 12 (OCR por
+visão — ver app/agents/agente.py) e (2) corrigi-la com o "time invisível"
+de agentes 2 a 9 (ver app/orchestrator/corretor.py). Se QUALQUER uma das
+duas etapas falhar (sem ANTHROPIC_API_KEY configurada, erro de rede, JSON
+inválido, etc.), a redação SEMPRE fica salva e visível — só permanece com
+status='aguardando_ia' e nota_c1..c5/feedback_ia ficam NULL, exatamente
+como já acontecia antes desta versão. Ou seja: sem a chave configurada no
+ambiente, o comportamento é idêntico ao de antes (nenhuma quebra).
+
+Este módulo continua independente de app/ai_engine.py — aquele arquivo
+segue existindo, intocado, como a implementação "v1" (nunca chamada por
+ninguém). corrigir_redacao() usada aqui é a de app/orchestrator/corretor.py.
 """
-from flask import Blueprint, render_template, redirect, url_for, request, flash, Response
+import logging
+
+from flask import Blueprint, jsonify, render_template, redirect, url_for, request, flash, Response
 
 from .. import storage
+from ..agents import agente
+from ..auth import login_obrigatorio, usuario_logado, PAPEIS_DIRECAO
 from ..db import get_db, new_id
-from ..auth import login_obrigatorio, usuario_logado
+from ..orchestrator.corretor import ErroCorrecao, corrigir_redacao
+from .calendario import _segmento_do_usuario
 
 bp = Blueprint("redacao", __name__, url_prefix="/redacao")
+
+_log = logging.getLogger(__name__)
 
 # Nome do bucket no Supabase Storage (ver migration create_bucket_redacoes)
 # — cada módulo que usa app/storage.py passa o próprio bucket, ver também
@@ -44,10 +52,27 @@ def _aluno_atual(db):
     return db.execute("select * from alunos where usuario_id = ?", (u["id"],)).fetchone()
 
 
+def _bloqueio_se_nao_medio(db):
+    """Redação é só para o Ensino Médio (decisão do usuário em 2026-09-09).
+    O menu já esconde o link pra quem não é do médio (ver _injetar_layout
+    em app/__init__.py), mas isso sozinho não impede acesso direto por URL
+    — quem chamar uma rota deste módulo deve checar isto primeiro e, se vier
+    algo diferente de None, devolver esse valor direto (é a resposta de
+    redirecionamento já pronta)."""
+    u = usuario_logado()
+    if _segmento_do_usuario(db, u) != "medio":
+        flash("A Redação está disponível apenas para o Ensino Médio.", "erro")
+        return redirect(url_for("auth.painel"))
+    return None
+
+
 @bp.route("/")
 @login_obrigatorio(papeis=["aluno"])
 def index():
     db = get_db()
+    bloqueio = _bloqueio_se_nao_medio(db)
+    if bloqueio:
+        return bloqueio
     aluno = _aluno_atual(db)
     redacoes = db.execute(
         "select * from redacoes where aluno_id = ? order by criado_em desc",
@@ -59,6 +84,9 @@ def index():
 @bp.route("/nova")
 @login_obrigatorio(papeis=["aluno"])
 def nova():
+    bloqueio = _bloqueio_se_nao_medio(get_db())
+    if bloqueio:
+        return bloqueio
     return render_template("redacao_form.html")
 
 
@@ -66,6 +94,9 @@ def nova():
 @login_obrigatorio(papeis=["aluno"])
 def enviar():
     db = get_db()
+    bloqueio = _bloqueio_se_nao_medio(db)
+    if bloqueio:
+        return bloqueio
     u = usuario_logado()
     aluno = _aluno_atual(db)
 
@@ -112,14 +143,66 @@ def enviar():
     )
     db.commit()
 
-    flash("Redação enviada — assim que a correção por IA estiver disponível, o resultado aparece aqui.", "ok")
+    # Correção automática, na hora — best-effort. QUALQUER falha aqui (sem
+    # ANTHROPIC_API_KEY, rede fora, JSON malformado, etc.) é engolida por
+    # _tentar_corrigir_automaticamente: a redação já está salva acima e
+    # continua com status='aguardando_ia', exatamente como antes desta
+    # versão. Nunca deixe uma falha de IA impedir o redirect abaixo.
+    corrigida = _tentar_corrigir_automaticamente(db, redacao_id, tema or "", conteudo, content_type)
+
+    if corrigida:
+        flash("Redação enviada e corrigida — confira o resultado abaixo.", "ok")
+    else:
+        flash("Redação enviada — assim que a correção por IA estiver disponível, o resultado aparece aqui.", "ok")
     return redirect(url_for("redacao.resultado", redacao_id=redacao_id))
+
+
+def _tentar_corrigir_automaticamente(db, redacao_id: str, tema: str, foto_bytes: bytes, content_type: str) -> bool:
+    """Tenta transcrever (Agente 12) e corrigir (corrigir_redacao) a
+    redação recém-enviada, e já atualiza a linha no banco se der certo.
+    Devolve True se a redação terminou com status='corrigida', False se
+    ficou (ou continuou) 'aguardando_ia' por qualquer motivo — nunca
+    levanta exceção para quem chamou."""
+    try:
+        imagem_base64 = agente.codificar_imagem_para_base64(foto_bytes)
+        resultado_ocr, _meta = agente.chamar_agente_12(imagem_base64, imagem_media_type=content_type)
+        texto_transcrito = (resultado_ocr or {}).get("texto_transcrito", "").strip()
+        if not texto_transcrito:
+            return False
+
+        resultado = corrigir_redacao(tema, texto_transcrito, redacao_id=redacao_id)
+
+        db.execute(
+            "update redacoes set texto = ?, status = 'corrigida', "
+            "nota_c1 = ?, nota_c2 = ?, nota_c3 = ?, nota_c4 = ?, nota_c5 = ?, "
+            "nota_ponderada = ?, feedback_ia = ? where id = ?",
+            (
+                texto_transcrito,
+                resultado["nota_c1"], resultado["nota_c2"], resultado["nota_c3"],
+                resultado["nota_c4"], resultado["nota_c5"], resultado["nota_ponderada"],
+                resultado["feedback_ia"], redacao_id,
+            ),
+        )
+        db.commit()
+        return True
+    except (agente.ErroAgenteIA, ErroCorrecao) as e:
+        _log.warning("Correção automática da redação %s não completou: %s", redacao_id, e)
+        return False
+    except Exception:
+        # Best-effort de verdade: um bug aqui nunca pode derrubar o envio
+        # da redação em si. Se isto disparar demais em produção, é sinal de
+        # que vale investigar via logging.exception() antes deste except.
+        _log.exception("Erro inesperado na correção automática da redação %s", redacao_id)
+        return False
 
 
 @bp.route("/<redacao_id>")
 @login_obrigatorio(papeis=["aluno"])
 def resultado(redacao_id):
     db = get_db()
+    bloqueio = _bloqueio_se_nao_medio(db)
+    if bloqueio:
+        return bloqueio
     aluno = _aluno_atual(db)
     redacao = db.execute(
         "select * from redacoes where id = ? and aluno_id = ?",
@@ -129,8 +212,12 @@ def resultado(redacao_id):
         flash("Redação não encontrada.", "erro")
         return redirect(url_for("redacao.index"))
 
-    nota_total = sum(redacao[c] or 0 for c in ("nota_c1", "nota_c2", "nota_c3", "nota_c4", "nota_c5"))
-    return render_template("redacao_resultado.html", r=redacao, nota_total=nota_total)
+    # nota_ponderada é a nota canônica (decisão do usuário em 2026-09-09,
+    # ver app/orchestrator/corretor.py) — guardada na coluna no momento da
+    # correção, não recalculada aqui, para não mudar retroativamente a nota
+    # de uma redação já corrigida se os pesos entre competências mudarem.
+    nota_ponderada = redacao["nota_ponderada"]
+    return render_template("redacao_resultado.html", r=redacao, nota_ponderada=nota_ponderada)
 
 
 @bp.route("/<redacao_id>/arquivo")
@@ -160,3 +247,29 @@ def arquivo(redacao_id):
         flash("Foto não encontrada — pode ter sido perdida num reinício do ambiente de teste.", "erro")
         return redirect(url_for("redacao.index"))
     return Response(conteudo, mimetype=redacao["arquivo_content_type"])
+
+
+@bp.route("/teste-corrigir", methods=["POST"])
+@login_obrigatorio(papeis=["coordenador"] + list(PAPEIS_DIRECAO))
+def teste_corrigir():
+    """Rota de teste ISOLADA para validar o "time invisível" de agentes com
+    texto DIGITADO (sem foto, sem OCR, sem gravar nada no banco) — pensada
+    para testar a qualidade da correção antes de confiar nela no fluxo real
+    do aluno. Aceita POST com 'tema' e 'texto' (form ou JSON) e devolve o
+    JSON da correção.
+
+    Restrita a coordenação/direção de propósito: cada chamada gasta
+    créditos reais de API — não deixamos ao alcance do aluno."""
+    dados = request.get_json(silent=True) or request.form
+    tema = (dados.get("tema") or "").strip()
+    texto = (dados.get("texto") or "").strip()
+
+    if not texto:
+        return jsonify({"erro": "Envie 'texto' (a redação digitada) no corpo do POST."}), 400
+
+    try:
+        resultado = corrigir_redacao(tema, texto)
+    except ErroCorrecao as e:
+        return jsonify({"erro": str(e)}), 502
+
+    return jsonify(resultado)
