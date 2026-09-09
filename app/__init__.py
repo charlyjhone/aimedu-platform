@@ -8,7 +8,7 @@ from flask import Flask, session, request
 from .db import init_db, get_db
 from . import auth
 from .auth import escopo_etapa, PAPEIS_DIRECAO
-from .modules import diagnostico, radar_coordenacao, bussola_vocacional, redacao, relatorios_familia, inclusao, gestao_usuarios, coordenador_professores, turmas, observacoes_infantil, calendario
+from .modules import diagnostico, radar_coordenacao, bussola_vocacional, redacao, relatorios_familia, inclusao, gestao_usuarios, coordenador_professores, turmas, observacoes_infantil, calendario, trilha_adaptativa
 from .modules.gestao_usuarios import PAPEIS_LABEL, SEGMENTOS_LABEL
 from .modules.calendario import _publicos_visiveis, _segmento_do_usuario, _eventos_visiveis, _dias_do_mes_com_evento, PAPEIS_GERENCIA
 from .ai_engine import NOMES_DISCIPLINA
@@ -136,6 +136,7 @@ MENU_POR_PAPEL = {
     "aluno": [
         {"nome": "Minha jornada", "itens": [
             {"label": "Diagnóstico Adaptativo", "endpoint": "diagnostico.index", "icone": "target"},
+            {"label": "Trilha Adaptativa", "endpoint": "trilha_adaptativa.index", "icone": "layers"},
             {"label": "Redação", "endpoint": "redacao.index", "icone": "file-text"},
             {"label": "Bússola Vocacional", "endpoint": "bussola_vocacional.index", "icone": "compass"},
         ]},
@@ -193,6 +194,7 @@ def create_app():
     app.register_blueprint(turmas.bp)
     app.register_blueprint(observacoes_infantil.bp)
     app.register_blueprint(calendario.bp)
+    app.register_blueprint(trilha_adaptativa.bp)
 
     @app.context_processor
     def _injetar_layout():
@@ -221,13 +223,14 @@ def create_app():
                 {**secao, "itens": [i for i in secao["itens"] if i["endpoint"] != "observacoes_infantil.index"]}
                 for secao in menu
             ]
-        # Redação (correção por IA) é só para o Ensino Médio (decisão do
-        # usuário em 2026-09-09) — some do menu de quem não é do médio, e a
-        # própria rota em app/modules/redacao.py bloqueia o acesso direto
-        # por URL, mesmo padrão do item acima.
+        # Redação (correção por IA) e Trilha Adaptativa são só para o Ensino
+        # Médio (decisão do usuário em 2026-09-09) — somem do menu de quem
+        # não é do médio, e a própria rota de cada módulo bloqueia o acesso
+        # direto por URL, mesmo padrão do item acima.
         if u["papel"] == "aluno" and segmento_eventos != "medio":
             menu = [
-                {**secao, "itens": [i for i in secao["itens"] if i["endpoint"] != "redacao.index"]}
+                {**secao, "itens": [i for i in secao["itens"]
+                                     if i["endpoint"] not in ("redacao.index", "trilha_adaptativa.index")]}
                 for secao in menu
             ]
         # Próximos eventos do calendário (ver app/modules/calendario.py) —
